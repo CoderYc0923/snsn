@@ -1,0 +1,192 @@
+/* SnSn — Miraa-like light theme (sage / lime) */
+:root {
+  --bg: #f7f8f2;
+  --bg-card: #ffffff;
+  --bg-sage: #e8eee2;
+  --bg-sage-deep: #dde6d5;
+  --bg-dock: #eef3e8;
+  --ink: #1c1f1a;
+  --ink-soft: #5a684c;
+  --ink-faint: #8b9680;
+  --line: #e4eadc;
+  --accent: #b8e86a;
+  --accent-deep: #6f8f4e;
+  --accent-ink: #2d3e2f;
+  --accent-soft: #e5f5c8;
+  --hl-yellow: #f6e58d;
+  --hl-blue: #a8d4f0;
+  --hl-pink: #f3b6c8;
+  --hl-orange: #f5c48a;
+  --hl-mint: #bfe3c4;
+
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  --shadow-card: 0 2px 12px rgba(45, 62, 47, 0.05);
+  --shadow-float: 0 8px 28px rgba(45, 62, 47, 0.12);
+  --shadow-dock: 0 10px 32px rgba(45, 62, 47, 0.14);
+
+  --font-ui: "Manrope", "IBM Plex Sans JP", system-ui, sans-serif;
+  --font-jp: "IBM Plex Sans JP", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --font-brand: "Syne", "Manrope", system-ui, sans-serif;
+
+  --phone-max: 430px;
+  --tap: 44px;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --nav-h: 72px;
+
+  color-scheme: light;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: #dfe4d8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img,
+video {
+  max-width: 100%;
+  display: block;
+}
+
+#app {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.phone-frame {
+  width: min(100%, var(--phone-max));
+  height: 100dvh;
+  min-height: 100dvh;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 480px) {
+  #app {
+    padding: 24px 12px;
+    background:
+      radial-gradient(900px 480px at 50% 0%, #e5f5c8 0%, transparent 55%),
+      #dfe4d8;
+  }
+
+  .phone-frame {
+    height: min(900px, calc(100dvh - 48px));
+    min-height: min(900px, calc(100dvh - 48px));
+    border-radius: 32px;
+    box-shadow:
+      0 0 0 1px rgba(45, 62, 47, 0.06),
+      0 24px 60px rgba(45, 62, 47, 0.14);
+  }
+}
+
+.page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  padding-top: var(--sat);
+  background: var(--bg);
+}
+
+/* 中间可滚动区：顶栏/底栏 flex-shrink:0，只有这里 overflow */
+.page-body {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.page-footer {
+  flex-shrink: 0;
+  padding-bottom: var(--sab);
+}
+
+.page-pad {
+  padding-left: max(18px, var(--sal));
+  padding-right: max(18px, var(--sar));
+}
+
+.icon-btn {
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: var(--radius-pill);
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+}
+
+.icon-btn:active {
+  background: rgba(45, 62, 47, 0.06);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.muted {
+  color: var(--ink-soft);
+}
+
+.faint {
+  color: var(--ink-faint);
+}
