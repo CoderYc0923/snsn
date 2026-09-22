@@ -1,6 +1,6 @@
 <script lang="ts">
   import { cuePinned, echoSheetOpen, loopEnabled, playbackRate, playing } from '../lib/nav'
-  import { applyRate, pauseMedia, seekRatio, togglePlay } from '../lib/lessonMedia'
+  import { applyRate, pauseMedia, togglePlay } from '../lib/lessonMedia'
   import Icon from './Icon.svelte'
 
   let {
@@ -13,10 +13,7 @@
     progress?: number
   } = $props()
 
-  let scrubbing = $state(false)
-  let scrubRatio = $state(0)
-
-  const shown = $derived(scrubbing ? scrubRatio : Math.max(0, Math.min(1, progress)))
+  const shown = $derived(Math.max(0, Math.min(1, progress)))
 
   function cycleRate() {
     const rates = [0.75, 1, 1.25, 1.5]
@@ -24,32 +21,6 @@
     const next = rates[(i + 1) % rates.length] ?? 1
     playbackRate.set(next)
     applyRate(next)
-  }
-
-  function ratioFromEvent(event: PointerEvent, el: HTMLElement) {
-    const rect = el.getBoundingClientRect()
-    return Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
-  }
-
-  function onPointerDown(event: PointerEvent) {
-    const el = event.currentTarget as HTMLElement
-    el.setPointerCapture(event.pointerId)
-    scrubbing = true
-    scrubRatio = ratioFromEvent(event, el)
-  }
-
-  function onPointerMove(event: PointerEvent) {
-    if (!scrubbing) return
-    const el = event.currentTarget as HTMLElement
-    scrubRatio = ratioFromEvent(event, el)
-  }
-
-  function onPointerUp(event: PointerEvent) {
-    if (!scrubbing) return
-    const el = event.currentTarget as HTMLElement
-    scrubRatio = ratioFromEvent(event, el)
-    seekRatio(scrubRatio)
-    scrubbing = false
   }
 
   function openExplain() {
@@ -63,16 +34,11 @@
     <span>{currentLabel}</span>
     <div
       class="track"
-      role="slider"
-      tabindex="0"
+      role="progressbar"
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(shown * 100)}
       aria-label="播放进度"
-      onpointerdown={onPointerDown}
-      onpointermove={onPointerMove}
-      onpointerup={onPointerUp}
-      onpointercancel={() => (scrubbing = false)}
     >
       <i style="width: {Math.round(shown * 100)}%"></i>
       <b style="left: {Math.round(shown * 100)}%"></b>
@@ -146,8 +112,7 @@
     height: 18px;
     display: flex;
     align-items: center;
-    touch-action: none;
-    cursor: pointer;
+    pointer-events: none;
   }
 
   .track::before {

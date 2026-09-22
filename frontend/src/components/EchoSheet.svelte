@@ -259,9 +259,13 @@
       <button class="close" type="button" aria-label="关闭" onclick={close}>×</button>
     </div>
 
-    <div class="body">
-      <CueCard {cue} active />
+    <div class="scroll">
+      <div class="body">
+        <CueCard {cue} active />
+      </div>
+    </div>
 
+    <div class="dock-fixed">
       <div class="modes" role="tablist" aria-label="跟读模式">
         {#each steps as step}
           <button
@@ -288,7 +292,7 @@
           {:else if listError}
             <p class="err">{listError}</p>
           {:else if recordings.length === 0}
-            <p class="muted tip">还没有录音。点「说」录一条，或点上方「去录音」。</p>
+            <p class="muted tip">还没有录音。点「说」录一条，或点「去录音」。</p>
           {:else}
             <ul class="rec-list">
               {#each recordings as rec (rec.id)}
@@ -297,8 +301,11 @@
                     <Icon name="play" size={16} />
                     <span>{rec.name}</span>
                   </button>
-                  <button class="rec-del" type="button" aria-label="删除" onclick={() => void removeRecording(rec.id)}
-                    >删</button
+                  <button
+                    class="rec-del"
+                    type="button"
+                    aria-label="删除"
+                    onclick={() => void removeRecording(rec.id)}>删</button
                   >
                 </li>
               {/each}
@@ -341,9 +348,7 @@
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
+    overflow: hidden;
   }
 
   .backdrop {
@@ -360,11 +365,13 @@
     z-index: 1;
     width: 100%;
     max-height: min(88%, 100%);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
     background: #fff;
     border-radius: 28px 28px 0 0;
-    padding: 4px 14px max(16px, var(--sab));
+    padding: 4px 14px 0;
     box-shadow: 0 -10px 40px rgba(45, 62, 47, 0.12);
     animation: rise 0.22s ease;
     margin-top: auto;
@@ -380,9 +387,8 @@
   }
 
   .sheet-top {
-    position: sticky;
-    top: 0;
-    z-index: 2;
+    position: relative;
+    flex-shrink: 0;
     background: #fff;
     padding-top: 4px;
   }
@@ -408,23 +414,45 @@
     background: var(--bg-sage);
   }
 
+  .scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-bottom: 8px;
+  }
+
   .body {
     border-radius: var(--radius-lg);
     background: var(--bg-sage);
     padding: 12px;
   }
 
+  .dock-fixed {
+    flex-shrink: 0;
+    max-height: 48%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding-bottom: max(14px, var(--sab));
+    background: #fff;
+    border-top: 1px solid rgba(45, 62, 47, 0.06);
+  }
+
   .modes {
+    flex-shrink: 0;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 8px;
-    margin-top: 12px;
+    padding: 10px 0 8px;
   }
 
   .mode {
     min-height: 42px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.72);
+    background: var(--bg-sage);
     color: var(--ink-soft);
     font-weight: 750;
     font-size: 0.9rem;
@@ -433,7 +461,7 @@
   }
 
   .mode.active {
-    background: #fff;
+    background: #eef6dc;
     color: var(--accent-ink);
     box-shadow: 0 1px 4px rgba(45, 62, 47, 0.06);
   }
@@ -449,10 +477,14 @@
   }
 
   .panel {
-    margin-top: 12px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-top: 4px;
     padding: 12px;
     border-radius: 14px;
-    background: #fff;
+    background: var(--bg-sage);
   }
 
   .panel-head {
@@ -511,7 +543,7 @@
     gap: 8px;
     padding: 0 12px;
     border-radius: 12px;
-    background: var(--bg-sage);
+    background: #fff;
     font-weight: 700;
     font-size: 0.88rem;
     text-align: left;

@@ -12,6 +12,18 @@ let boundLessonId: string | null = null
 let segmentEndMs: number | null = null
 let segmentRaf = 0
 let echoAudio: HTMLAudioElement | null = null
+let loopGapTimer: ReturnType<typeof setTimeout> | null = null
+let loopGapActive = false
+
+const LOOP_GAP_MS = 1500
+
+function clearLoopGap() {
+  if (loopGapTimer) {
+    clearTimeout(loopGapTimer)
+    loopGapTimer = null
+  }
+  loopGapActive = false
+}
 
 export function bindMedia(el: HTMLMediaElement | null, lessonId: string, durationHintMs = 0) {
   unbindMedia()
@@ -55,6 +67,7 @@ export function bindMedia(el: HTMLMediaElement | null, lessonId: string, duratio
 export function unbindMedia() {
   stopSegmentWatch()
   stopEchoAudio()
+  clearLoopGap()
   if (raf) cancelAnimationFrame(raf)
   raf = 0
   if (media) {
@@ -73,6 +86,7 @@ export function getBoundLessonId() {
 }
 
 export function seekMs(ms: number) {
+  clearLoopGap()
   if (!media) return
   const dur = media.duration
   const sec = Math.max(0, ms / 1000)
@@ -88,11 +102,13 @@ export function seekRatio(ratio: number) {
 export function pauseMedia() {
   stopSegmentWatch()
   stopEchoAudio()
+  clearLoopGap()
   media?.pause()
 }
 
 export async function playMedia() {
   if (!media) return
+  clearLoopGap()
   stopEchoAudio()
   media.playbackRate = get(playbackRate)
   await media.play().catch(() => undefined)
@@ -185,13 +201,25 @@ export function indexForTime(cues: Cue[], timeMs: number): number {
   return idx
 }
 
-/** Keep single-cue loop while playing (disabled while segment-watch active). */
+/** Keep single-cue loop while playing; pause ~1.5s between repeats. */
 export function enforceCueLoop(cue: Cue | null) {
-  if (!media || !cue || !get(loopEnabled) || media.paused) return
+  if (!media || !cue || !get(loopEnabled)) return
   if (segmentEndMs != null) return
-  if (media.currentTime * 1000 >= cue.endMs - 40) {
-    media.currentTime = cue.startMs / 1000
-  }
+  if (loopGapActive) return
+  if (media.paused) return
+  if (media.currentTime * 1000 < cue.endMs - 40) return
+
+  loopGapActive = true
+  media.pause()
+  const startMs = cue.startMs
+  loopGapTimer = setTimeout(() => {
+    loopGapTimer = null
+    loopGapActive = false
+    if (!media || !get(loopEnabled)) return
+    media.currentTime = startMs / 1000
+    mediaCurrentMs.set(startMs)
+    void media.play().catch(() => undefined)
+  }, LOOP_GAP_MS)
 }
 
 export function syncCueIndex(cues: Cue[]) {
