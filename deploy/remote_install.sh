@@ -28,7 +28,8 @@ if [[ -n "$API_TAR" ]]; then
     python3.11 -m venv /opt/snsn/.venv
     /opt/snsn/.venv/bin/pip install -U pip
   fi
-  /opt/snsn/.venv/bin/pip install --upgrade "$dest"/snsn_api-*-py3-none-any.whl
+  /opt/snsn/.venv/bin/pip install --upgrade --force-reinstall --no-cache-dir \
+    "$dest"/snsn_api-*-py3-none-any.whl
 
   if [[ ! -f /opt/snsn/.env ]]; then
     cp "$dest/.env.example" /opt/snsn/.env
