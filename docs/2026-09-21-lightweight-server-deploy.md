@@ -14,7 +14,7 @@
 | `/opt/snsn/.env` | 密钥与配置（不进发布包） |
 | `/opt/snsn/data/tmp` | 上传和抽音的临时文件 |
 | `/opt/snsn/releases/<ver>/` | 后端发布包（wheel + unit） |
-| `/opt/snsn/www/` | 前端静态产物（`frontend/dist`） |
+| `/opt/snsn/frontend/` | 前端静态产物（`frontend/dist`） |
 
 轻量控制台防火墙只放行 **22、80、443**。
 
@@ -81,7 +81,7 @@ cd backend
 ### 2.2 服务器安装
 
 ```bash
-sudo mkdir -p /opt/snsn /opt/snsn/data/tmp /opt/snsn/releases /opt/snsn/www
+sudo mkdir -p /opt/snsn /opt/snsn/data/tmp /opt/snsn/releases /opt/snsn/frontend
 
 # 把 snsn-api-0.1.0-release.tar.gz 传到服务器后：
 # 用 tar 直接解到目标目录（会带上 .env.example；不要用 cp dir/*，会漏掉点文件）
@@ -155,18 +155,18 @@ cd frontend
 
 后端没设 `SNSN_API_TOKEN` 时，不要设置 `VITE_SNSN_API_TOKEN`。这个值会写进静态文件，口令改了就要重新构建并上传。
 
-上传到服务器后解压到 `/opt/snsn/www/`：
+上传到服务器后解压到 `/opt/snsn/frontend/`：
 
 ```powershell
 scp .\release\snsn-www-*.tar.gz root@服务器IP:/tmp/
 ```
 
 ```bash
-sudo mkdir -p /opt/snsn/www
-sudo tar -xzf /tmp/snsn-www-YYYYMMDD-HHMM.tar.gz -C /opt/snsn/www
-sudo chown -R nginx:nginx /opt/snsn/www
-sudo find /opt/snsn/www -type d -exec chmod 755 {} \;
-sudo find /opt/snsn/www -type f -exec chmod 644 {} \;
+sudo mkdir -p /opt/snsn/frontend
+sudo tar -xzf /tmp/snsn-www-YYYYMMDD-HHMM.tar.gz -C /opt/snsn/frontend
+sudo chown -R nginx:nginx /opt/snsn/frontend
+sudo find /opt/snsn/frontend -type d -exec chmod 755 {} \;
+sudo find /opt/snsn/frontend -type f -exec chmod 644 {} \;
 ```
 
 ## 4. Nginx
@@ -185,7 +185,7 @@ server {
     server_name 你的域名或IP;
 
     client_max_body_size 220m;
-    root /opt/snsn/www;
+    root /opt/snsn/frontend;
     index index.html;
 
     location /api/ {
@@ -231,8 +231,8 @@ SELinux 是 Enforcing 时：
 ```bash
 sudo setsebool -P httpd_can_network_connect 1
 sudo dnf install -y policycoreutils-python-utils
-sudo semanage fcontext -a -t httpd_sys_content_t "/opt/snsn/www(/.*)?"
-sudo restorecon -Rv /opt/snsn/www
+sudo semanage fcontext -a -t httpd_sys_content_t "/opt/snsn/frontend(/.*)?"
+sudo restorecon -Rv /opt/snsn/frontend
 ```
 
 装了 firewalld 时：
@@ -269,7 +269,7 @@ sudo systemctl restart snsn-api
 curl -s http://127.0.0.1:8000/api/health
 ```
 
-前端：本机重新 `.\release.ps1`，上传 `snsn-www-*.tar.gz`，解压覆盖 `/opt/snsn/www/`。静态文件不用重启 Nginx。
+前端：本机重新 `.\release.ps1`，上传 `snsn-www-*.tar.gz`，解压覆盖 `/opt/snsn/frontend/`。静态文件不用重启 Nginx。
 
 日志：
 
@@ -278,3 +278,22 @@ sudo journalctl -u snsn-api -f
 ```
 
 确认没有正在跑的任务后，可以清理 `/opt/snsn/data/tmp` 里的残留文件。
+
+## 7. GitHub Actions 自动部署（私有库可用）
+
+私有仓库一样能用 Actions，不需要把仓库改成公开。在 GitHub → **Settings → Secrets and variables → Actions** 添加：
+
+| Secret | 含义 |
+|--------|------|
+| `DEPLOY_HOST` | 服务器公网 IP 或域名 |
+| `DEPLOY_USER` | SSH 用户，一般是 `root` |
+| `DEPLOY_SSH_KEY` | 部署用私钥全文（建议单独一对密钥） |
+| `VITE_SNSN_API_TOKEN` | 与服务器 `SNSN_API_TOKEN` 相同 |
+| `DEPLOY_WWW_DIR` | 可选，默认 `/opt/snsn/frontend` |
+| `DEPLOY_SSH_PORT` | 可选，默认 `22` |
+
+服务器上把对应**公钥**写进 `~/.ssh/authorized_keys`。`.env` 仍只放在服务器，不会进 CI。
+
+发版：仓库 **Actions → Deploy → Run workflow**，勾选要发后端/前端。
+
+流程：`build` 产物 → `scp` → 服务器执行 `deploy/remote_install.sh`（装 wheel、解压静态、`systemctl restart snsn-api`）。

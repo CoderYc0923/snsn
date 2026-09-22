@@ -1,0 +1,116 @@
+# Deploy SnSn to the lightweight server over SSH.
+# Private GitHub repos are fully supported — Actions just need repo Secrets.
+#
+# Required Secrets:
+#   DEPLOY_HOST          e.g. 47.x.x.x
+#   DEPLOY_USER          e.g. root
+#   DEPLOY_SSH_KEY       private key PEM (full file contents)
+# Optional Secrets:
+#   DEPLOY_SSH_PORT      default 22
+#   DEPLOY_WWW_DIR       optional, default /opt/snsn/frontend
+#   VITE_SNSN_API_TOKEN  baked into frontend build (must match server SNSN_API_TOKEN)
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: Deploy backend wheel
+        type: boolean
+        default: true
+      frontend:
+        description: Deploy frontend static
+        type: boolean
+        default: true
+  # Uncomment when you want auto-deploy on main:
+  # push:
+  #   branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        if: inputs.backend
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build backend release
+        if: inputs.backend
+        working-directory: backend
+        run: |
+          python -m pip install -U pip build
+          python scripts/build_release.py
+          ls -la dist/
+
+      - name: Setup Node
+        if: inputs.frontend
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend release
+        if: inputs.frontend
+        working-directory: frontend
+        env:
+          VITE_SNSN_API_TOKEN: ${{ secrets.VITE_SNSN_API_TOKEN }}
+        run: |
+          npm ci
+          npm run build
+          stamp=$(date +%Y%m%d-%H%M)
+          mkdir -p release
+          tar -czf "release/snsn-www-${stamp}.tar.gz" -C dist .
+          ls -la release/
+
+      - name: Prepare SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          PORT="${PORT:-22}"
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Upload artifacts + install
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          WWW_DIR: ${{ secrets.DEPLOY_WWW_DIR }}
+          DO_BACKEND: ${{ inputs.backend }}
+          DO_FRONTEND: ${{ inputs.frontend }}
+        run: |
+          set -euo pipefail
+          PORT="${PORT:-22}"
+          WWW_DIR="${WWW_DIR:-/opt/snsn/frontend}"
+          SSH=(ssh -i ~/.ssh/deploy_key -p "$PORT" -o IdentitiesOnly=yes "${USER}@${HOST}")
+          SCP=(scp -i ~/.ssh/deploy_key -P "$PORT" -o IdentitiesOnly=yes)
+
+          "${SSH[@]}" "mkdir -p /tmp/snsn-ci && rm -rf /tmp/snsn-ci/* || true"
+
+          if [[ "$DO_BACKEND" == "true" ]]; then
+            api=$(ls backend/dist/snsn-api-*-release.tar.gz | head -n1)
+            "${SCP[@]}" "$api" "${USER}@${HOST}:/tmp/snsn-ci/"
+          fi
+          if [[ "$DO_FRONTEND" == "true" ]]; then
+            www=$(ls frontend/release/snsn-www-*.tar.gz | head -n1)
+            "${SCP[@]}" "$www" "${USER}@${HOST}:/tmp/snsn-ci/"
+          fi
+
+          "${SCP[@]}" deploy/remote_install.sh "${USER}@${HOST}:/tmp/snsn-ci/remote_install.sh"
+          "${SSH[@]}" "chmod +x /tmp/snsn-ci/remote_install.sh && SNSN_WWW_DIR='$WWW_DIR' bash /tmp/snsn-ci/remote_install.sh"

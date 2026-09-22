@@ -63,7 +63,7 @@ Artifacts in this folder:
 ## First install
 
 ```bash
-sudo mkdir -p /opt/snsn/data/tmp /opt/snsn/releases /opt/snsn/www
+sudo mkdir -p /opt/snsn/data/tmp /opt/snsn/releases /opt/snsn/frontend
 
 # Prefer extracting the release tarball (includes dotfiles like .env.example).
 # Do NOT use: cp -a some-dir/* dest/  — shell globs skip .* files.
@@ -87,7 +87,7 @@ sudo systemctl enable --now snsn-api
 curl -s http://127.0.0.1:8000/api/health
 ```
 
-Frontend static files go to `/opt/snsn/www/` (Nginx `root`).
+Frontend static files go to `/opt/snsn/frontend/` (Nginx `root`).
 
 ## Upgrade
 

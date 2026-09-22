@@ -28,5 +28,5 @@ try {
 Write-Host ''
 Write-Host "[snsn] built $tarPath"
 Write-Host 'Upload then on server:'
-Write-Host "  sudo tar -xzf $tarName -C /opt/snsn/www"
-Write-Host '  sudo chown -R nginx:nginx /opt/snsn/www'
+Write-Host "  sudo tar -xzf $tarName -C /opt/snsn/frontend"
+Write-Host '  sudo chown -R nginx:nginx /opt/snsn/frontend'
