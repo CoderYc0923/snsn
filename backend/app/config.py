@@ -31,12 +31,14 @@ class Settings(BaseSettings):
 
     dashscope_api_key: str = ""
     asr_model: str = "paraformer-v2"
-    translate_model: str = "qwen-plus"
+    # Flash: word-level JSON is output-heavy; plus/thinking modes are too slow.
+    translate_model: str = "deepseek-v4-flash"
     enable_translate: bool = True
-    # Larger batches + concurrency cut wall-clock for long episodes.
-    translate_batch_items: int = 10
-    translate_batch_chars: int = 1600
+    # Small batches finish sooner so progress moves; concurrency covers throughput.
+    translate_batch_items: int = 4
+    translate_batch_chars: int = 500
     translate_concurrency: int = 4
+    translate_timeout_sec: int = 90
 
     @computed_field  # type: ignore[prop-decorator]
     @property

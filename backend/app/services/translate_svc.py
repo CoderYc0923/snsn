@@ -17,19 +17,30 @@ logger = logging.getLogger(__name__)
 
 _TONES = {"yellow", "blue", "pink", "orange", "mint", "none"}
 _SYSTEM_PROMPT = """你是日语新闻/播客字幕的校对、分词注音与翻译专家，目标水准不低于 JLPT N1。
-对每条字幕完成：
-1. text：校对明显听写错误，保持口播原意；禁止扩写/摘要/合并相邻条。
-2. translation：准确自然的简体中文。
-3. words：按语义词/词组切开（不要一字一词），每项含：
-   - text：词面（可含标点单独一项）
-   - furigana：汉字读音假名；纯假名/片假名/标点可省略或空
-   - romaji：训令/通行罗马字，小写
-   - tone：实词轮流用 yellow|blue|pink|orange|mint；助词/助动词/标点用 none
-words 拼接后应与 text 基本一致（允许去掉多余空白）。
+对输入的每一条字幕，必须同时完成以下三项，且不得遗漏：
 
-严格只返回 JSON 数组，长度=输入条数；每项：
-{"text":"...","translation":"...","words":[{"text":"...","furigana":"...","romaji":"...","tone":"yellow"}]}
-不要 Markdown，不要解释。"""
+1. text（校对）
+   - 只修正明显听写错误（同音错字、漏字、多字、明显断句错误），保持口播原意与语气。
+   - 禁止扩写、摘要、润色成书面语、合并/拆分相邻字幕条。
+   - 若原文已正确，保持 text 与输入一致。
+
+2. translation（中译）
+   - 准确、自然的简体中文；忠实于校对后的 text，不添不减。
+   - 专有名词、数字、外来语按语境处理；勿漏译关键信息。
+
+3. words（语义分词 + 注音 + 罗马字 + 色块）
+   - 按语义词/词组切开，不要一字一词；助词、助动词、接续可单独成项；标点可单独一项。
+   - 每项字段：
+     · text：词面（与原文用字一致）
+     · furigana：仅汉字注假名读音；纯平假名/片假名/数字/拉丁字母/标点填空字符串或不写
+     · romaji：训令式或通行罗马字，一律小写；标点可空
+     · tone：实词（名词/动词/形容词/副词等）在 yellow|blue|pink|orange|mint 中轮流使用；助词、助动词、形式名词、标点、纯符号用 none
+   - 所有 words[].text 按序拼接后，应与 text 基本一致（仅允许去掉多余空白，不得增删实质字符）。
+
+输出硬性约束：
+- 严格只返回一个 JSON 数组，长度必须等于输入条数，顺序一一对应。
+- 每项形状：{"text":"...","translation":"...","words":[{"text":"...","furigana":"...","romaji":"...","tone":"yellow"}]}
+- 不要 Markdown 代码围栏，不要前后解释、注释或多余字段。"""
 
 ProgressFn = Callable[[float, str], None]
 
@@ -102,6 +113,12 @@ class TranslateService:
         return cues
 
     def _apply_batch(self, batch: list[Cue], batch_start: int) -> None:
+        logger.info(
+            "translate call begin offset=%s size=%s chars=%s",
+            batch_start,
+            len(batch),
+            sum(len(c.text or "") for c in batch),
+        )
         try:
             rows = self._polish_and_translate([c.text for c in batch])
         except Exception:
@@ -156,6 +173,10 @@ class TranslateService:
         return rows
 
     def _call_model(self, user: str) -> str:
+        import time
+
+        t0 = time.monotonic()
+        timeout = max(30, int(self.settings.translate_timeout_sec))
         resp = Generation.call(
             model=self.settings.translate_model,
             messages=[
@@ -165,12 +186,22 @@ class TranslateService:
             result_format="message",
             temperature=0.2,
             top_p=0.8,
+            enable_thinking=False,
+            request_timeout=timeout,
         )
+        elapsed = time.monotonic() - t0
         if resp.status_code != 200:
+            logger.error(
+                "translate LLM failed in %.1fs code=%s msg=%s",
+                elapsed,
+                getattr(resp, "code", None),
+                getattr(resp, "message", None),
+            )
             raise RuntimeError(f"LLM {resp.code}: {resp.message}")
         content = resp.output.choices[0].message.content
         if not isinstance(content, str):
             raise RuntimeError("LLM empty content")
+        logger.info("translate LLM ok in %.1fs chars_out=%s", elapsed, len(content))
         return content
 
 
