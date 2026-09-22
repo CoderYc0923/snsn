@@ -9,6 +9,9 @@ export const mediaReady = writable(false)
 let media: HTMLMediaElement | null = null
 let raf = 0
 let boundLessonId: string | null = null
+let segmentEndMs: number | null = null
+let segmentRaf = 0
+let echoAudio: HTMLAudioElement | null = null
 
 export function bindMedia(el: HTMLMediaElement | null, lessonId: string, durationHintMs = 0) {
   unbindMedia()
@@ -29,9 +32,6 @@ export function bindMedia(el: HTMLMediaElement | null, lessonId: string, duratio
   const onPause = () => playing.set(false)
   const onEnded = () => {
     playing.set(false)
-    if (get(loopEnabled)) {
-      // loop handled by cue watcher in LessonPage
-    }
   }
 
   el.addEventListener('loadedmetadata', onMeta)
@@ -53,6 +53,8 @@ export function bindMedia(el: HTMLMediaElement | null, lessonId: string, duratio
 }
 
 export function unbindMedia() {
+  stopSegmentWatch()
+  stopEchoAudio()
   if (raf) cancelAnimationFrame(raf)
   raf = 0
   if (media) {
@@ -83,18 +85,94 @@ export function seekRatio(ratio: number) {
   seekMs(Math.max(0, Math.min(1, ratio)) * dur)
 }
 
+export function pauseMedia() {
+  stopSegmentWatch()
+  stopEchoAudio()
+  media?.pause()
+}
+
+export async function playMedia() {
+  if (!media) return
+  stopEchoAudio()
+  media.playbackRate = get(playbackRate)
+  await media.play().catch(() => undefined)
+}
+
 export async function togglePlay() {
   if (!media) return
   if (media.paused) {
-    media.playbackRate = get(playbackRate)
-    await media.play().catch(() => undefined)
+    await playMedia()
   } else {
-    media.pause()
+    pauseMedia()
   }
 }
 
 export function applyRate(rate: number) {
   if (media) media.playbackRate = rate
+}
+
+function stopSegmentWatch() {
+  if (segmentRaf) cancelAnimationFrame(segmentRaf)
+  segmentRaf = 0
+  segmentEndMs = null
+}
+
+function watchSegmentEnd() {
+  const tick = () => {
+    if (!media || segmentEndMs == null) return
+    if (media.paused) {
+      stopSegmentWatch()
+      return
+    }
+    if (media.currentTime * 1000 >= segmentEndMs - 40) {
+      media.pause()
+      seekMs(Math.max(0, (segmentEndMs ?? 0) - 20))
+      stopSegmentWatch()
+      return
+    }
+    segmentRaf = requestAnimationFrame(tick)
+  }
+  segmentRaf = requestAnimationFrame(tick)
+}
+
+/** Play only [startMs, endMs) then pause. Stops any echo recording audio. */
+export async function playCueSegment(cue: Cue) {
+  if (!media) return
+  stopEchoAudio()
+  stopSegmentWatch()
+  seekMs(cue.startMs)
+  segmentEndMs = cue.endMs
+  media.playbackRate = get(playbackRate)
+  await media.play().catch(() => undefined)
+  watchSegmentEnd()
+}
+
+export function stopEchoAudio() {
+  if (!echoAudio) return
+  echoAudio.pause()
+  const src = echoAudio.src
+  echoAudio.removeAttribute('src')
+  echoAudio.load()
+  if (src.startsWith('blob:')) URL.revokeObjectURL(src)
+  echoAudio = null
+}
+
+/** Pause lesson media and play a user recording blob. */
+export async function playRecordingBlob(blob: Blob) {
+  pauseMedia()
+  stopEchoAudio()
+  const url = URL.createObjectURL(blob)
+  const audio = new Audio(url)
+  echoAudio = audio
+  audio.onended = () => {
+    if (echoAudio === audio) stopEchoAudio()
+  }
+  audio.onerror = () => {
+    if (echoAudio === audio) stopEchoAudio()
+  }
+  await audio.play().catch(() => {
+    stopEchoAudio()
+  })
 }
 
 export function indexForTime(cues: Cue[], timeMs: number): number {
@@ -107,9 +185,10 @@ export function indexForTime(cues: Cue[], timeMs: number): number {
   return idx
 }
 
-/** Keep single-cue loop while playing. */
+/** Keep single-cue loop while playing (disabled while segment-watch active). */
 export function enforceCueLoop(cue: Cue | null) {
   if (!media || !cue || !get(loopEnabled) || media.paused) return
+  if (segmentEndMs != null) return
   if (media.currentTime * 1000 >= cue.endMs - 40) {
     media.currentTime = cue.startMs / 1000
   }

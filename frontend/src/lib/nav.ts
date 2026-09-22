@@ -32,6 +32,8 @@ export const subtitleMode = writable<SubtitleMode>('both')
 export const shadowStep = writable<ShadowStep>('listen')
 export const playbackRate = writable(1)
 export const loopEnabled = writable(true)
+/** When true, cue highlight stays on the selected line (no auto follow). */
+export const cuePinned = writable(false)
 export const echoSheetOpen = writable(false)
 export const playing = writable(false)
 

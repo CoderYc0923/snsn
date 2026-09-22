@@ -3,6 +3,7 @@
   import {
     activeLessonId,
     cueIndex,
+    cuePinned,
     echoSheetOpen,
     goHome,
     lessons,
@@ -13,6 +14,7 @@
     enforceCueLoop,
     mediaCurrentMs,
     mediaDurationMs,
+    pauseMedia,
     seekMs,
     syncCueIndex,
     applyRate,
@@ -53,7 +55,7 @@
     if (!cues?.length) return
     void $mediaCurrentMs
     if ($loopEnabled) enforceCueLoop($cue)
-    else syncCueIndex(cues)
+    else if (!$cuePinned) syncCueIndex(cues)
   })
 
   $effect(() => {
@@ -80,7 +82,15 @@
         <Icon name="back" size={22} />
       </button>
       <h1>{$lesson.title}</h1>
-      <button class="icon-btn" type="button" aria-label="字幕设置" onclick={() => echoSheetOpen.set(true)}>
+      <button
+        class="icon-btn"
+        type="button"
+        aria-label="字幕设置"
+        onclick={() => {
+          pauseMedia()
+          echoSheetOpen.set(true)
+        }}
+      >
         <Icon name="captions" size={20} />
       </button>
     </header>
@@ -117,7 +127,7 @@
     </div>
 
     {#if $echoSheetOpen}
-      <EchoSheet cue={$cue} />
+      <EchoSheet lessonId={$lesson.id} cue={$cue} />
     {/if}
   </main>
 {:else}

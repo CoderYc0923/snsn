@@ -2,7 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Lesson, SubtitleMode } from './demo'
 
 const DB_NAME = 'snsn'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 export type AppSettings = {
   subtitleMode: SubtitleMode
@@ -15,6 +15,17 @@ export type MediaCacheRecord = {
   name: string
   size: number
   updatedAt: string
+}
+
+export type CueRecording = {
+  id: string
+  lessonId: string
+  cueId: string
+  /** Display name: YYYY-MM-DD HH:mm:ss */
+  name: string
+  blob: Blob
+  mime: string
+  createdAt: string
 }
 
 export type UsageTone = 'ok' | 'watch' | 'high' | 'critical'
@@ -34,6 +45,14 @@ interface SnSnDB extends DBSchema {
   media: {
     key: string
     value: MediaCacheRecord
+  }
+  recordings: {
+    key: string
+    value: CueRecording
+    indexes: {
+      'by-lesson': string
+      'by-cue': [string, string]
+    }
   }
   meta: {
     key: string
@@ -55,6 +74,11 @@ function getDb() {
         }
         if (oldVersion < 2 && !db.objectStoreNames.contains('media')) {
           db.createObjectStore('media', { keyPath: 'lessonId' })
+        }
+        if (oldVersion < 3 && !db.objectStoreNames.contains('recordings')) {
+          const store = db.createObjectStore('recordings', { keyPath: 'id' })
+          store.createIndex('by-lesson', 'lessonId')
+          store.createIndex('by-cue', ['lessonId', 'cueId'])
         }
       },
     })
@@ -85,10 +109,67 @@ export async function upsertLesson(lesson: Lesson): Promise<void> {
 
 export async function deleteLesson(lessonId: string): Promise<void> {
   const db = await getDb()
-  const tx = db.transaction(['lessons', 'media'], 'readwrite')
+  const tx = db.transaction(['lessons', 'media', 'recordings'], 'readwrite')
   await tx.objectStore('lessons').delete(lessonId)
   await tx.objectStore('media').delete(lessonId)
+  const recIdx = tx.objectStore('recordings').index('by-lesson')
+  let cursor = await recIdx.openCursor(IDBKeyRange.only(lessonId))
+  while (cursor) {
+    await cursor.delete()
+    cursor = await cursor.continue()
+  }
   await tx.done
+}
+
+export async function putCueRecording(
+  input: Omit<CueRecording, 'id' | 'createdAt' | 'name'> & { name?: string },
+): Promise<CueRecording> {
+  const db = await getDb()
+  const createdAt = new Date()
+  const record: CueRecording = {
+    id: crypto.randomUUID?.() ?? `r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    lessonId: input.lessonId,
+    cueId: input.cueId,
+    name: input.name || formatRecordingName(createdAt),
+    blob: input.blob,
+    mime: input.mime,
+    createdAt: createdAt.toISOString(),
+  }
+  await db.put('recordings', record)
+  return record
+}
+
+export async function listCueRecordings(lessonId: string, cueId: string): Promise<CueRecording[]> {
+  const db = await getDb()
+  const rows = await db.getAllFromIndex('recordings', 'by-cue', [lessonId, cueId])
+  // Newest first (by createdAt, then display name).
+  return rows.sort((a, b) => {
+    const byCreated = b.createdAt.localeCompare(a.createdAt)
+    if (byCreated !== 0) return byCreated
+    return b.name.localeCompare(a.name)
+  })
+}
+
+export async function deleteCueRecording(id: string): Promise<void> {
+  const db = await getDb()
+  await db.delete('recordings', id)
+}
+
+export async function clearLessonRecordings(lessonId: string): Promise<void> {
+  const db = await getDb()
+  const tx = db.transaction('recordings', 'readwrite')
+  const idx = tx.store.index('by-lesson')
+  let cursor = await idx.openCursor(IDBKeyRange.only(lessonId))
+  while (cursor) {
+    await cursor.delete()
+    cursor = await cursor.continue()
+  }
+  await tx.done
+}
+
+export function formatRecordingName(date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}:${p(date.getMinutes())}:${p(date.getSeconds())}`
 }
 
 export async function putMediaCache(
@@ -125,8 +206,9 @@ export async function listMediaCaches(): Promise<MediaCacheRecord[]> {
 
 export async function clearAllMediaCaches(): Promise<void> {
   const db = await getDb()
-  const tx = db.transaction('media', 'readwrite')
-  await tx.store.clear()
+  const tx = db.transaction(['media', 'recordings'], 'readwrite')
+  await tx.objectStore('media').clear()
+  await tx.objectStore('recordings').clear()
   await tx.done
 }
 

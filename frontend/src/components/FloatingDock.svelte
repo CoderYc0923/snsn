@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { echoSheetOpen, loopEnabled, playbackRate, playing } from '../lib/nav'
-  import { applyRate, seekRatio, togglePlay } from '../lib/lessonMedia'
+  import { cuePinned, echoSheetOpen, loopEnabled, playbackRate, playing } from '../lib/nav'
+  import { applyRate, pauseMedia, seekRatio, togglePlay } from '../lib/lessonMedia'
   import Icon from './Icon.svelte'
 
   let {
@@ -51,6 +51,11 @@
     seekRatio(scrubRatio)
     scrubbing = false
   }
+
+  function openExplain() {
+    pauseMedia()
+    echoSheetOpen.set(true)
+  }
 </script>
 
 <div class="dock">
@@ -77,11 +82,17 @@
 
   <div class="row">
     <div class="actions">
-      <button class="act" type="button" disabled title="即将推出">
+      <button
+        class="act"
+        class:on={$cuePinned}
+        type="button"
+        title="固定当前句，播放时不高亮跳转"
+        onclick={() => cuePinned.update((v) => !v)}
+      >
         <Icon name="pin" size={20} />
         固定
       </button>
-      <button class="act" type="button" onclick={() => echoSheetOpen.set(true)}>
+      <button class="act" type="button" onclick={openExplain}>
         <Icon name="explain" size={20} />
         解释
       </button>
@@ -103,7 +114,7 @@
         {$playing ? '暂停' : '播放'}
       </button>
     </div>
-    <button class="primary" type="button" aria-label="影子跟读" onclick={() => echoSheetOpen.set(true)}>
+    <button class="primary" type="button" aria-label="影子跟读" onclick={openExplain}>
       <Icon name="people" size={22} />
     </button>
   </div>
@@ -194,10 +205,6 @@
 
   .act.on {
     color: var(--accent-deep);
-  }
-
-  .act:disabled {
-    opacity: 0.4;
   }
 
   .primary {
