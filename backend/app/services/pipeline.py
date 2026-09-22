@@ -50,7 +50,8 @@ class TranscribePipeline:
                 raise PipelineError("OSS 未配置")
             object_key = self.oss.object_key(job.id)
             self.oss.upload_file(wav_path, object_key)
-            file_url = self.oss.public_http_url(object_key)
+            # Internal-endpoint signed URL → Bailian pulls via Beijing intranet.
+            file_url = self.oss.asr_file_url(object_key)
 
             on_progress(0.55, "asr")
             if not self.asr.configured:
@@ -63,7 +64,7 @@ class TranscribePipeline:
             result.cues = split_cues_for_shadowing(result.cues)
 
             on_progress(0.85, "translate")
-            result.cues = self.translate.fill_zh(result.cues)
+            result.cues = self.translate.fill_zh(result.cues, on_progress=on_progress)
 
             on_progress(0.95, "cleanup")
             return result

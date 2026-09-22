@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     asr_model: str = "paraformer-v2"
     translate_model: str = "qwen-plus"
     enable_translate: bool = True
+    # Larger batches + concurrency cut wall-clock for long episodes.
+    translate_batch_items: int = 10
+    translate_batch_chars: int = 1600
+    translate_concurrency: int = 4
 
     @computed_field  # type: ignore[prop-decorator]
     @property

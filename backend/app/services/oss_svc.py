@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 import oss2
@@ -12,11 +11,18 @@ class OssService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._auth = oss2.Auth(settings.oss_access_key_id, settings.oss_access_key_secret)
-        # Public endpoint: works even when the app server is not in Beijing.
+        # Public endpoint: app server may be outside Beijing (upload over Internet).
         self._bucket = oss2.Bucket(
             self._auth,
             settings.oss_endpoint,
             settings.oss_bucket,
+        )
+        # Internal endpoint: only for URLs consumed by Aliyun Beijing services (Bailian).
+        self._internal_bucket = oss2.Bucket(
+            self._auth,
+            settings.oss_internal_endpoint or settings.oss_endpoint,
+            settings.oss_bucket,
+            is_cname=False,
         )
 
     @property
@@ -38,12 +44,19 @@ class OssService:
         except Exception:
             pass
 
-    def signed_get_url(self, object_key: str, expires_sec: int = 3600) -> str:
-        if self.settings.oss_public_base_url:
-            base = self.settings.oss_public_base_url.rstrip("/")
-            return f"{base}/{object_key}?t={int(time.time())}"
-        return self._bucket.sign_url("GET", object_key, expires_sec)
+    def asr_file_url(self, object_key: str, expires_sec: int = 3600) -> str:
+        """HTTPS URL for Paraformer to download the object.
 
-    def public_http_url(self, object_key: str) -> str:
-        """HTTPS URL for DashScope. Keep Bucket in cn-beijing for in-region pull."""
-        return self.signed_get_url(object_key, expires_sec=3600)
+        Prefer the Beijing *internal* endpoint so Bailian (cn-beijing) pulls over
+        Aliyun intranet (no OSS 外网流出). Do not open this URL from your
+        non-Beijing app server — it is only for Bailian.
+        """
+        if self.settings.oss_public_base_url:
+            # Escape hatch: force public-endpoint signed URL (外网流出).
+            return self._bucket.sign_url("GET", object_key, expires_sec)
+
+        url = self._internal_bucket.sign_url("GET", object_key, expires_sec)
+        # oss2 may return http:// for internal; normalize to https.
+        if url.startswith("http://"):
+            url = "https://" + url[len("http://") :]
+        return url

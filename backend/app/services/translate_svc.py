@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Callable
 
 import dashscope
 from dashscope import Generation
@@ -13,8 +15,6 @@ from app.schemas import Cue, CueWord
 
 logger = logging.getLogger(__name__)
 
-_BATCH_MAX_ITEMS = 4
-_BATCH_MAX_CHARS = 700
 _TONES = {"yellow", "blue", "pink", "orange", "mint", "none"}
 _SYSTEM_PROMPT = """你是日语新闻/播客字幕的校对、分词注音与翻译专家，目标水准不低于 JLPT N1。
 对每条字幕完成：
@@ -31,6 +31,8 @@ words 拼接后应与 text 基本一致（允许去掉多余空白）。
 {"text":"...","translation":"...","words":[{"text":"...","furigana":"...","romaji":"...","tone":"yellow"}]}
 不要 Markdown，不要解释。"""
 
+ProgressFn = Callable[[float, str], None]
+
 
 class TranslateService:
     def __init__(self, settings: Settings) -> None:
@@ -38,21 +40,65 @@ class TranslateService:
         if settings.dashscope_api_key:
             dashscope.api_key = settings.dashscope_api_key
 
-    def fill_zh(self, cues: list[Cue]) -> list[Cue]:
+    def fill_zh(self, cues: list[Cue], on_progress: ProgressFn | None = None) -> list[Cue]:
         if not cues or not self.settings.enable_translate:
             return cues
         if not self.settings.dashscope_api_key:
             return cues
 
-        for batch_start, batch in _iter_batches(cues):
+        batches = list(
+            _iter_batches(
+                cues,
+                max_items=self.settings.translate_batch_items,
+                max_chars=self.settings.translate_batch_chars,
+            )
+        )
+        workers = max(1, min(self.settings.translate_concurrency, len(batches) or 1))
+        logger.info(
+            "translate start cues=%s batches=%s workers=%s model=%s",
+            len(cues),
+            len(batches),
+            workers,
+            self.settings.translate_model,
+        )
+
+        done = 0
+        lock = threading.Lock()
+
+        def _report() -> None:
+            if not on_progress or not batches:
+                return
+            # Keep stage=translate while moving bar 0.85 → 0.94
+            p = 0.85 + 0.09 * (done / len(batches))
+            on_progress(min(p, 0.94), "translate")
+
+        def _run(item: tuple[int, list[Cue]]) -> None:
+            nonlocal done
+            batch_start, batch = item
             self._apply_batch(batch, batch_start)
+            with lock:
+                done += 1
+                logger.info("translate batch %s/%s (offset=%s size=%s)", done, len(batches), batch_start, len(batch))
+                _report()
+
+        if workers == 1:
+            for item in batches:
+                _run(item)
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [pool.submit(_run, item) for item in batches]
+                for fut in as_completed(futures):
+                    fut.result()
+
         missing = [
             c
             for c in cues
             if not (c.translation or "").strip() or not _has_rich_words(c)
         ]
-        for cue in missing:
-            self._apply_batch([cue], -1)
+        if missing:
+            logger.info("translate retry missing=%s", len(missing))
+            for cue in missing:
+                self._apply_batch([cue], -1)
         return cues
 
     def _apply_batch(self, batch: list[Cue], batch_start: int) -> None:
@@ -136,15 +182,13 @@ def _has_rich_words(cue: Cue) -> bool:
     )
 
 
-def _iter_batches(cues: list[Cue]):
+def _iter_batches(cues: list[Cue], max_items: int, max_chars: int):
     batch: list[Cue] = []
     chars = 0
     start = 0
     for i, cue in enumerate(cues):
         tlen = len(cue.text or "")
-        overflow = batch and (
-            len(batch) >= _BATCH_MAX_ITEMS or chars + tlen > _BATCH_MAX_CHARS
-        )
+        overflow = batch and (len(batch) >= max_items or chars + tlen > max_chars)
         if overflow:
             yield start, batch
             start = i

@@ -1,3 +1,5 @@
+﻿import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -6,6 +8,13 @@ from app.config import get_settings
 
 
 def create_app() -> FastAPI:
+    logging.getLogger("app").setLevel(logging.INFO)
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(levelname)s %(name)s: %(message)s",
+        )
+
     settings = get_settings()
     settings.tmp_dir.mkdir(parents=True, exist_ok=True)
 
