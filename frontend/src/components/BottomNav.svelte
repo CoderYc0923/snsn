@@ -3,9 +3,9 @@
   import Icon from './Icon.svelte'
   import type { IconName } from './Icon.svelte'
 
-  const tabs: { id: 'home' | 'podcast' | 'settings'; label: string; icon: IconName }[] = [
+  const tabs: { id: 'home' | 'lessons' | 'settings'; label: string; icon: IconName }[] = [
     { id: 'home', label: '首页', icon: 'home' },
-    { id: 'podcast', label: '播客', icon: 'podcast' },
+    { id: 'lessons', label: '课列表', icon: 'list' },
     { id: 'settings', label: '设置', icon: 'settings' },
   ]
 </script>

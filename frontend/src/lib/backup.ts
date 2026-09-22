@@ -170,7 +170,12 @@ export async function readBackupFile(file: File): Promise<LoadedBackup> {
     return readBackupZip(file)
   }
 
-  // Legacy JSON backup (no media).
+  // Legacy JSON, or mislabeled zip: sniff magic bytes PK\x03\x04
+  const head = new Uint8Array(await file.slice(0, 4).arrayBuffer())
+  if (head[0] === 0x50 && head[1] === 0x4b && (head[2] === 0x03 || head[2] === 0x05 || head[2] === 0x07)) {
+    return readBackupZip(file)
+  }
+
   const text = await file.text()
   const backup = parseBackup(JSON.parse(text))
   return { backup, mediaByLessonId: new Map() }

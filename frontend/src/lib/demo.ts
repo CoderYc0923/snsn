@@ -1,6 +1,6 @@
 export type SubtitleMode = 'ja' | 'zh' | 'both'
 export type ShadowStep = 'listen' | 'echo' | 'speak' | 'playback'
-export type RouteName = 'home' | 'lesson' | 'podcast' | 'settings'
+export type RouteName = 'home' | 'lesson' | 'lessons' | 'settings'
 export type WordTone = 'yellow' | 'blue' | 'pink' | 'orange' | 'mint' | 'none'
 
 export type CueWord = {
@@ -29,6 +29,8 @@ export type Lesson = {
   targetLang: 'zh-CN'
   posterLabel: string
   cues: Cue[]
+  /** ISO timestamp; used for home "最近使用" and list ordering. */
+  lastOpenedAt?: string
 }
 
 export const demoLessons: Lesson[] = [

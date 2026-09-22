@@ -1,4 +1,4 @@
-import { get, writable } from 'svelte/store'
+import { derived, get, writable } from 'svelte/store'
 import {
   type Lesson,
   type RouteName,
@@ -35,6 +35,23 @@ export const loopEnabled = writable(true)
 export const echoSheetOpen = writable(false)
 export const playing = writable(false)
 
+/** Most recently opened / imported lesson for the home card. */
+export const recentLesson = derived(lessons, ($lessons) => $lessons[0] ?? null)
+
+function recentKey(lesson: Lesson): string {
+  return lesson.lastOpenedAt || `${lesson.date}T00:00:00.000Z`
+}
+
+export function compareLessonsRecent(a: Lesson, b: Lesson): number {
+  const byOpened = recentKey(b).localeCompare(recentKey(a))
+  if (byOpened !== 0) return byOpened
+  return a.title.localeCompare(b.title)
+}
+
+function sortLessonsRecent(items: Lesson[]): Lesson[] {
+  return [...items].sort(compareLessonsRecent)
+}
+
 export async function initStorage() {
   // Drop old UI-preview demo courses if any; home stays empty until real import.
   const existing = await listLessons()
@@ -42,31 +59,38 @@ export async function initStorage() {
   for (const demo of demos) {
     await deleteLesson(demo.id)
   }
-  lessons.set(await listLessons())
+  lessons.set(sortLessonsRecent(await listLessons()))
   const settings = await getSettings()
   subtitleMode.set(settings.subtitleMode)
   storageReady.set(true)
 }
 
 export async function persistLessons(next: Lesson[]) {
-  lessons.set(next)
-  await saveLessons(next)
+  const sorted = sortLessonsRecent(next)
+  lessons.set(sorted)
+  await saveLessons(sorted)
 }
 
 export async function addImportedLesson(lesson: Lesson, file: File) {
-  await upsertLesson(lesson)
-  await putMediaCache(lesson.id, file, { name: file.name, mime: file.type })
+  const stamped: Lesson = {
+    ...lesson,
+    lastOpenedAt: new Date().toISOString(),
+  }
+  await upsertLesson(stamped)
+  await putMediaCache(stamped.id, file, { name: file.name, mime: file.type })
   lessons.update((all) => {
-    const rest = all.filter((item) => item.id !== lesson.id)
-    // Newest import stays on top within the same date.
-    return [lesson, ...rest].sort((a, b) => {
-      const byDate = b.date.localeCompare(a.date)
-      if (byDate !== 0) return byDate
-      if (a.id === lesson.id) return -1
-      if (b.id === lesson.id) return 1
-      return 0
-    })
+    const rest = all.filter((item) => item.id !== stamped.id)
+    return sortLessonsRecent([stamped, ...rest])
   })
+}
+
+async function markLessonOpened(id: string) {
+  const now = new Date().toISOString()
+  const all = get(lessons)
+  const target = all.find((l) => l.id === id)
+  if (!target) return
+  const next = all.map((l) => (l.id === id ? { ...l, lastOpenedAt: now } : l))
+  await persistLessons(next)
 }
 
 export async function exportBackup() {
@@ -125,6 +149,7 @@ export async function importBackup(file: File, mode: 'merge' | 'replace' = 'merg
 export async function removeLesson(lessonId: string) {
   await deleteLesson(lessonId)
   lessons.update((all) => all.filter((l) => l.id !== lessonId))
+  backupMessage.set(null)
   if (get(activeLessonId) === lessonId) {
     goHome()
   }
@@ -145,6 +170,7 @@ export function openLesson(id: string) {
   echoSheetOpen.set(false)
   playing.set(false)
   route.set('lesson')
+  void markLessonOpened(id)
 }
 
 export function goHome() {
@@ -154,7 +180,8 @@ export function goHome() {
   echoSheetOpen.set(false)
 }
 
-export function goTab(tab: 'home' | 'podcast' | 'settings') {
+export function goTab(tab: 'home' | 'lessons' | 'settings') {
+  unbindMedia()
   activeLessonId.set(null)
   echoSheetOpen.set(false)
   route.set(tab)

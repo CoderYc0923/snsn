@@ -7,7 +7,7 @@
   import HomePage from './routes/HomePage.svelte'
   import LessonPage from './routes/LessonPage.svelte'
   import SettingsPage from './routes/SettingsPage.svelte'
-  import PodcastPage from './routes/PodcastPage.svelte'
+  import LessonsPage from './routes/LessonsPage.svelte'
 
   onMount(() => {
     initAuth()
@@ -24,8 +24,8 @@
     <HomePage />
   {:else if $route === 'lesson'}
     <LessonPage />
-  {:else if $route === 'podcast'}
-    <PodcastPage />
+  {:else if $route === 'lessons'}
+    <LessonsPage />
   {:else}
     <SettingsPage />
   {/if}

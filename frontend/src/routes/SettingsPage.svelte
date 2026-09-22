@@ -56,6 +56,7 @@
 
   async function onExport() {
     error = null
+    backupMessage.set(null)
     busy = true
     try {
       await exportBackup()
@@ -68,6 +69,7 @@
 
   async function onPickFile(mode: 'merge' | 'replace') {
     error = null
+    backupMessage.set(null)
     const file = fileInput.files?.[0]
     fileInput.value = ''
     if (!file) return
@@ -247,7 +249,7 @@
         class="sr-only"
         bind:this={fileInput}
         type="file"
-        accept="application/zip,.zip,application/json,.json"
+        accept=".zip,.json"
         onchange={onFileChange}
       />
     </div>
