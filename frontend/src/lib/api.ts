@@ -26,6 +26,7 @@ export type JobResult = {
   source_lang: string
   target_lang: string
   duration_ms: number
+  title?: string | null
   cues: ApiCue[]
 }
 
@@ -36,11 +37,14 @@ export type JobInfo = {
   stage: string
   error: string | null
   result: JobResult | null
+  source?: 'upload' | 'bilibili' | string
+  title?: string | null
 }
 
 export type HealthResponse = {
   ok: boolean
   ffmpeg: boolean
+  ytdlp?: boolean
   oss_configured: boolean
   asr_configured: boolean
   busy: boolean
@@ -96,7 +100,7 @@ export async function verifyAccess(password: string, signal?: AbortSignal): Prom
   return (await resp.json()) as AuthVerifyResponse
 }
 
-/** POST /api/jobs — multipart file upload */
+/** POST /api/jobs — multipart audio upload */
 export async function createJob(file: File, signal?: AbortSignal): Promise<JobInfo> {
   const body = new FormData()
   body.append('file', file, file.name)
@@ -107,6 +111,31 @@ export async function createJob(file: File, signal?: AbortSignal): Promise<JobIn
   })
   if (!resp.ok) throw new Error(await readError(resp))
   return (await resp.json()) as JobInfo
+}
+
+/** POST /api/jobs/url — Bilibili link */
+export async function createJobFromUrl(url: string, signal?: AbortSignal): Promise<JobInfo> {
+  const resp = await apiFetch('/api/jobs/url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+    signal,
+  })
+  if (!resp.ok) throw new Error(await readError(resp))
+  return (await resp.json()) as JobInfo
+}
+
+/** GET /api/jobs/{id}/media — retained audio for IndexedDB */
+export async function fetchJobMedia(jobId: string, signal?: AbortSignal): Promise<File> {
+  const resp = await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/media`, { signal })
+  if (!resp.ok) throw new Error(await readError(resp))
+  const blob = await resp.blob()
+  const dispo = resp.headers.get('content-disposition') || ''
+  const match = /filename\*?=(?:UTF-8''|")?([^\";]+)/i.exec(dispo)
+  let name = match?.[1] ? decodeURIComponent(match[1].replace(/"/g, '')) : `snsn-${jobId}.m4a`
+  if (!/\.[a-z0-9]+$/i.test(name)) name += '.m4a'
+  const type = blob.type || 'audio/mp4'
+  return new File([blob], name, { type })
 }
 
 /** GET /api/jobs/{id} */
@@ -157,11 +186,12 @@ export async function pollJob(jobId: string, options: PollOptions = {}): Promise
   }
 }
 
-export function assertReadyForImport(health: HealthResponse): void {
+export function assertReadyForImport(health: HealthResponse, opts?: { needYtdlp?: boolean }): void {
   const missing: string[] = []
   if (!health.ffmpeg) missing.push('ffmpeg')
   if (!health.oss_configured) missing.push('OSS')
   if (!health.asr_configured) missing.push('百炼 API Key')
+  if (opts?.needYtdlp && !health.ytdlp) missing.push('yt-dlp')
   if (missing.length) {
     throw new Error(`后端未就绪：缺少 ${missing.join('、')}`)
   }
@@ -171,8 +201,10 @@ export function assertReadyForImport(health: HealthResponse): void {
 }
 
 /** Map backend pipeline stage → import progress step index (0–3). */
-export function stageToImportIndex(stage: string): number {
+export function stageToImportIndex(stage: string, source: 'upload' | 'bilibili' = 'upload'): number {
   switch (stage) {
+    case 'download':
+      return source === 'bilibili' ? 0 : 0
     case 'queued':
     case 'starting':
       return 0
@@ -191,17 +223,24 @@ export function stageToImportIndex(stage: string): number {
   }
 }
 
-export function mapJobToLesson(job: JobInfo, file: File): Lesson {
+export function mapJobToLesson(
+  job: JobInfo,
+  file: File,
+  opts?: { title?: string },
+): Lesson {
   const result = job.result
   if (!result) throw new Error('任务无转写结果')
-  const title = titleFromFilename(file.name)
-  const kind: Lesson['kind'] = file.type.startsWith('video/') ? 'video' : 'audio'
+  const title =
+    opts?.title?.trim() ||
+    job.title?.trim() ||
+    result.title?.trim() ||
+    titleFromFilename(file.name)
   return {
     id: job.id,
     title,
     date: new Date().toISOString().slice(0, 10),
     durationMs: result.duration_ms || 0,
-    kind,
+    kind: 'audio',
     sourceLang: 'ja',
     targetLang: 'zh-CN',
     posterLabel: posterFromTitle(title),

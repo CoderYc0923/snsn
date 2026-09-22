@@ -1,19 +1,39 @@
 <script lang="ts">
   import { lessons, openLesson, recentLesson } from '../lib/nav'
-  import { importTasks, startImport } from '../lib/importJob'
+  import { importTasks, startImport, startImportFromUrl } from '../lib/importJob'
   import BottomNav from '../components/BottomNav.svelte'
   import ImportProgressCard from '../components/ImportProgressCard.svelte'
   import LessonCard from '../components/LessonCard.svelte'
   import Icon from '../components/Icon.svelte'
 
   let fileInput: HTMLInputElement | undefined = $state()
+  let chooserOpen = $state(false)
+  let linkMode = $state(false)
+  let biliUrl = $state('')
 
   const importing = $derived($importTasks.some((t) => t.status === 'running'))
   const empty = $derived(!$recentLesson && $importTasks.length === 0)
 
-  function pickFile() {
+  function openChooser() {
     if (importing) return
+    linkMode = false
+    biliUrl = ''
+    chooserOpen = true
+  }
+
+  function closeChooser() {
+    chooserOpen = false
+    linkMode = false
+    biliUrl = ''
+  }
+
+  function pickFile() {
+    closeChooser()
     fileInput?.click()
+  }
+
+  function showLinkForm() {
+    linkMode = true
   }
 
   function onFileChange(event: Event) {
@@ -22,6 +42,13 @@
     input.value = ''
     if (!file) return
     void startImport(file)
+  }
+
+  function submitLink() {
+    const url = biliUrl.trim()
+    if (!url) return
+    closeChooser()
+    void startImportFromUrl(url)
   }
 </script>
 
@@ -32,14 +59,14 @@
       type="button"
       aria-label="导入"
       disabled={importing}
-      onclick={pickFile}
+      onclick={openChooser}
     >
       <Icon name="plus" size={22} stroke={2} />
     </button>
     <input
       class="sr-only"
       type="file"
-      accept="video/*,audio/*"
+      accept="audio/*,.mp3,.m4a,.wav,.aac,.flac,.ogg,.opus"
       bind:this={fileInput}
       onchange={onFileChange}
     />
@@ -78,8 +105,8 @@
     {#if empty}
       <section class="empty">
         <p class="empty-title">还没有课程</p>
-        <p class="muted">点右上角 +，选择日语音视频即可后台转写。</p>
-        <button class="empty-cta" type="button" disabled={importing} onclick={pickFile}
+        <p class="muted">点右上角 +，上传日语音频或粘贴 B 站链接。</p>
+        <button class="empty-cta" type="button" disabled={importing} onclick={openChooser}
           >导入材料</button
         >
       </section>
@@ -97,6 +124,38 @@
   <div class="page-footer">
     <BottomNav />
   </div>
+
+  {#if chooserOpen}
+    <div class="chooser-overlay" role="presentation">
+      <button class="chooser-backdrop" type="button" aria-label="关闭" onclick={closeChooser}
+      ></button>
+      <div class="chooser" role="dialog" aria-label="导入方式">
+        <div class="chooser-handle" aria-hidden="true"></div>
+        {#if !linkMode}
+          <h2>导入材料</h2>
+          <p class="chooser-tip muted">当前仅支持音频；视频入口已关闭。</p>
+          <button class="chooser-act primary" type="button" onclick={pickFile}>上传音频</button>
+          <button class="chooser-act" type="button" onclick={showLinkForm}>B 站链接</button>
+          <button class="chooser-cancel" type="button" onclick={closeChooser}>取消</button>
+        {:else}
+          <h2>B 站链接</h2>
+          <p class="chooser-tip muted">粘贴 bilibili.com 或 b23.tv 链接，将下载音频并转写。</p>
+          <input
+            class="url-input"
+            type="url"
+            inputmode="url"
+            placeholder="https://www.bilibili.com/video/..."
+            bind:value={biliUrl}
+            onkeydown={(e) => e.key === 'Enter' && submitLink()}
+          />
+          <button class="chooser-act primary" type="button" disabled={!biliUrl.trim()} onclick={submitLink}
+            >开始导入</button
+          >
+          <button class="chooser-cancel" type="button" onclick={() => (linkMode = false)}>返回</button>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </main>
 
 <style>
@@ -216,6 +275,89 @@
     font-size: 0.82rem;
     font-weight: 600;
     text-align: center;
+  }
+
+  .chooser-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+
+  .chooser-backdrop {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgba(45, 62, 47, 0.28);
+  }
+
+  .chooser {
+    position: relative;
+    z-index: 1;
+    background: #fff;
+    border-radius: 28px 28px 0 0;
+    padding: 8px 18px max(18px, var(--sab));
+    box-shadow: 0 -10px 40px rgba(45, 62, 47, 0.12);
+  }
+
+  .chooser-handle {
+    width: 40px;
+    height: 4px;
+    border-radius: 999px;
+    background: #d7dece;
+    margin: 4px auto 14px;
+  }
+
+  .chooser h2 {
+    margin: 0 0 6px;
+    font-size: 1.15rem;
+    font-weight: 800;
+  }
+
+  .chooser-tip {
+    margin: 0 0 14px;
+    font-size: 0.88rem;
+    line-height: 1.45;
+  }
+
+  .chooser-act {
+    width: 100%;
+    min-height: 48px;
+    margin-bottom: 8px;
+    border-radius: 14px;
+    background: var(--bg-sage);
+    color: var(--accent-ink);
+    font-weight: 800;
+  }
+
+  .chooser-act.primary {
+    background: var(--accent);
+  }
+
+  .chooser-act:disabled {
+    opacity: 0.45;
+  }
+
+  .chooser-cancel {
+    width: 100%;
+    min-height: 42px;
+    margin-top: 4px;
+    color: var(--ink-soft);
+    font-weight: 700;
+  }
+
+  .url-input {
+    width: 100%;
+    min-height: 48px;
+    margin-bottom: 12px;
+    padding: 0 14px;
+    border-radius: 14px;
+    border: 1.5px solid rgba(45, 62, 47, 0.12);
+    background: var(--bg-sage);
+    font-size: 0.92rem;
+    font-weight: 600;
   }
 
   @keyframes brand-rise {

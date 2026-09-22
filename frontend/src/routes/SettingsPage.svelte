@@ -155,6 +155,10 @@
             <strong class:bad={!health.asr_configured}>{flag(health.asr_configured)}</strong>
           </li>
           <li>
+            <span>yt-dlp</span>
+            <strong class:bad={!health.ytdlp}>{flag(!!health.ytdlp)}</strong>
+          </li>
+          <li>
             <span>任务队列</span>
             <strong class:bad={health.busy}>{health.busy ? '忙碌' : '空闲'}</strong>
           </li>

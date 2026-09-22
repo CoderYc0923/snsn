@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snsn-api"
-version = "0.1.2"
+version = "0.1.3"
 description = "SnSn speech shadowing API"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,6 +16,7 @@ dependencies = [
   "oss2==2.19.1",
   "dashscope==1.23.1",
   "httpx==0.28.1",
+  "yt-dlp>=2025.1.15",
 ]
 
 [project.scripts]

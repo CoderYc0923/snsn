@@ -1,17 +1,18 @@
 <script lang="ts">
   import {
     dismissImportTask,
-    IMPORT_STAGES,
     retryImport,
+    stagesForTask,
     type ImportTask,
   } from '../lib/importJob'
 
   let { task }: { task: ImportTask } = $props()
+  const stages = $derived(stagesForTask(task))
 </script>
 
 <article class="card" class:failed={task.status === 'failed'} aria-live="polite">
   <div class="top">
-    <div class="badge">{task.kind === 'video' ? '视频' : '音频'}</div>
+    <div class="badge">{task.source === 'bilibili' ? 'B站' : '音频'}</div>
     <button
       class="x"
       type="button"
@@ -32,13 +33,13 @@
     </div>
   {:else}
     <p class="hint">
-      {IMPORT_STAGES[task.stageIndex] ?? '处理中'}中 · 可继续浏览其它页面
+      {stages[task.stageIndex] ?? '处理中'}中 · 可继续浏览其它页面
     </p>
     <div class="bar" aria-hidden="true">
       <span style={`width: ${Math.max(8, Math.round(task.progress * 100))}%`}></span>
     </div>
     <ol class="steps">
-      {#each IMPORT_STAGES as label, index}
+      {#each stages as label, index}
         <li
           class:done={task.stageIndex > index}
           class:current={task.stageIndex === index}

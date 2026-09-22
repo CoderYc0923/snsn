@@ -37,6 +37,7 @@ class JobResult(BaseModel):
     source_lang: str = "ja"
     target_lang: str = "zh-CN"
     duration_ms: int = 0
+    title: str | None = None
     cues: list[Cue] = Field(default_factory=list)
 
 
@@ -47,6 +48,12 @@ class JobInfo(BaseModel):
     stage: str = "queued"
     error: str | None = None
     result: JobResult | None = None
+    source: str = "upload"  # upload | bilibili
+    title: str | None = None
+
+
+class CreateUrlJobRequest(BaseModel):
+    url: str = Field(min_length=8, max_length=2048)
 
 
 class AuthVerifyRequest(BaseModel):
@@ -61,6 +68,7 @@ class AuthVerifyResponse(BaseModel):
 class HealthResponse(BaseModel):
     ok: bool = True
     ffmpeg: bool = False
+    ytdlp: bool = False
     oss_configured: bool = False
     asr_configured: bool = False
     busy: bool = False
