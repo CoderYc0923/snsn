@@ -49,6 +49,15 @@ class JobInfo(BaseModel):
     result: JobResult | None = None
 
 
+class AuthVerifyRequest(BaseModel):
+    password: str = Field(min_length=6, max_length=6)
+
+
+class AuthVerifyResponse(BaseModel):
+    ok: bool = True
+    token: str = ""
+
+
 class HealthResponse(BaseModel):
     ok: bool = True
     ffmpeg: bool = False

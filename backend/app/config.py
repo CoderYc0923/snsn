@@ -14,10 +14,12 @@ class Settings(BaseSettings):
 
     host: str = "0.0.0.0"
     port: int = 8000
+    workers: int = 1
     tmp_dir: Path = Path(__file__).resolve().parents[1] / "data" / "tmp"
     max_upload_mb: int = 200
     max_duration_sec: int = 1800
     api_token: str = ""
+    app_password: str = "090114"
 
     oss_access_key_id: str = ""
     oss_access_key_secret: str = ""

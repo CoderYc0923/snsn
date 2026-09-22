@@ -1,19 +1,24 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { authUnlocked, initAuth } from './lib/auth'
   import { initStorage, route, storageReady } from './lib/nav'
   import { clearToast, toastMessage } from './lib/importJob'
+  import AccessGate from './components/AccessGate.svelte'
   import HomePage from './routes/HomePage.svelte'
   import LessonPage from './routes/LessonPage.svelte'
   import SettingsPage from './routes/SettingsPage.svelte'
   import PodcastPage from './routes/PodcastPage.svelte'
 
   onMount(() => {
+    initAuth()
     void initStorage()
   })
 </script>
 
 <div class="phone-frame">
-  {#if !$storageReady}
+  {#if !$authUnlocked}
+    <AccessGate />
+  {:else if !$storageReady}
     <div class="boot">加载中…</div>
   {:else if $route === 'home'}
     <HomePage />

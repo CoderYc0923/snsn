@@ -1,4 +1,5 @@
 import type { Cue, CueWord, Lesson, WordTone } from './demo'
+import { getApiToken } from './auth'
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
@@ -46,9 +47,10 @@ export type HealthResponse = {
   detail: Record<string, unknown>
 }
 
-const token = import.meta.env.VITE_SNSN_API_TOKEN as string | undefined
+const envToken = import.meta.env.VITE_SNSN_API_TOKEN as string | undefined
 
 function authHeaders(): HeadersInit {
+  const token = getApiToken() || envToken
   if (!token) return {}
   return { 'X-Snsn-Token': token }
 }
@@ -75,6 +77,23 @@ export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
   const resp = await apiFetch('/api/health', { signal })
   if (!resp.ok) throw new Error(await readError(resp))
   return (await resp.json()) as HealthResponse
+}
+
+export type AuthVerifyResponse = {
+  ok: boolean
+  token: string
+}
+
+/** POST /api/auth/verify — no auth required */
+export async function verifyAccess(password: string, signal?: AbortSignal): Promise<AuthVerifyResponse> {
+  const resp = await fetch('/api/auth/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+    signal,
+  })
+  if (!resp.ok) throw new Error(await readError(resp))
+  return (await resp.json()) as AuthVerifyResponse
 }
 
 /** POST /api/jobs — multipart file upload */

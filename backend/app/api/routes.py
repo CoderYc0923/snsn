@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 
 from app.config import Settings, get_settings
 from app.jobs.manager import JobManager, get_job_manager
-from app.schemas import HealthResponse, JobInfo
+from app.schemas import AuthVerifyRequest, AuthVerifyResponse, HealthResponse, JobInfo
 from app.services.ffmpeg_svc import ffmpeg_available
 
 router = APIRouter()
@@ -21,6 +21,17 @@ def require_token(
         return
     if x_snsn_token != settings.api_token:
         raise HTTPException(status_code=401, detail="unauthorized")
+
+
+@router.post("/auth/verify", response_model=AuthVerifyResponse)
+def verify_access(
+    body: AuthVerifyRequest,
+    settings: Settings = Depends(get_settings),
+) -> AuthVerifyResponse:
+    if body.password != settings.app_password:
+        raise HTTPException(status_code=401, detail="密码错误")
+    token = settings.api_token or "ok"
+    return AuthVerifyResponse(ok=True, token=token)
 
 
 @router.get("/health", response_model=HealthResponse)

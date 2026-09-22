@@ -4,15 +4,17 @@
 
 部署形态：
 
-- 前端是 Vite 静态产物，由 Nginx 托管。
-- 后端是 FastAPI 源码，不打包。在服务器上建虚拟环境后用 `uvicorn` 跑。
+- 前端是 Vite 静态产物（`dist/`），由 Nginx 托管。
+- 后端是 **wheel 发布包**：本机构建，服务器 `pip install`，用 systemd 跑 `snsn-api start`（无 reload）。
 - Nginx 把 `/api` 反代到 `127.0.0.1:8000`。8000 不对公网开放。
 
 | 路径 | 用途 |
 |------|------|
-| `/opt/snsn/backend` | 后端源码、虚拟环境、`.env` |
-| `/opt/snsn/backend/data/tmp` | 上传和抽音的临时文件 |
-| `/var/www/snsn` | 前端 `dist` |
+| `/opt/snsn/.venv` | 运行时虚拟环境（装 wheel） |
+| `/opt/snsn/.env` | 密钥与配置（不进发布包） |
+| `/opt/snsn/data/tmp` | 上传和抽音的临时文件 |
+| `/opt/snsn/releases/<ver>/` | 后端发布包（wheel + unit） |
+| `/opt/snsn/www/` | 前端静态产物（`frontend/dist`） |
 
 轻量控制台防火墙只放行 **22、80、443**。
 
@@ -57,37 +59,54 @@ sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-## 2. 后端
+## 2. 后端（发布包）
 
-后端不需要构建。把源码放到服务器，在 Linux 上新建虚拟环境。不要上传本机 Windows 的 `.venv`，也不要上传 `.env`、`__pycache__`、`data/tmp`。
+### 2.1 本机构建
 
-服务器能访问私有仓库时：
+在开发机 `backend/` 下：
 
-```bash
-sudo mkdir -p /opt/snsn /var/www/snsn
-sudo git clone <仓库地址> /opt/snsn
+```powershell
+cd backend
+.\release.ps1
+# 或: python scripts\build_release.py
 ```
 
-不能在服务器上克隆时，从本机上传 `backend` 目录（排除上面那些文件）到 `/opt/snsn/backend`。
+产物在 `backend/dist/`：
 
-然后在服务器上：
+- `snsn_api-0.1.0-py3-none-any.whl`
+- `snsn-api-0.1.0-release.tar.gz`（推荐上传这个）
+
+不要上传 Windows 的 `.venv`、`.env`、源码整树。
+
+### 2.2 服务器安装
 
 ```bash
-sudo useradd -r -s /sbin/nologin snsn || true
-cd /opt/snsn/backend
+sudo mkdir -p /opt/snsn /opt/snsn/data/tmp /opt/snsn/releases /opt/snsn/www
+
+# 把 snsn-api-0.1.0-release.tar.gz 传到服务器后：
+# 用 tar 直接解到目标目录（会带上 .env.example；不要用 cp dir/*，会漏掉点文件）
+sudo mkdir -p /opt/snsn/releases/0.1.0
+sudo tar -xzf /path/to/snsn-api-0.1.0-release.tar.gz \
+  -C /opt/snsn/releases/0.1.0 --strip-components=1
+# 确认含有 .env.example：
+# ls -la /opt/snsn/releases/0.1.0
+
+cd /opt/snsn
 sudo python3.11 -m venv .venv
 sudo .venv/bin/pip install -U pip
-sudo .venv/bin/pip install -r requirements.txt
-sudo cp -n .env.example .env
-sudo mkdir -p /opt/snsn/backend/data/tmp
+sudo .venv/bin/pip install /opt/snsn/releases/0.1.0/snsn_api-*-py3-none-any.whl
+
+sudo cp -n /opt/snsn/releases/0.1.0/.env.example /opt/snsn/.env
+sudo chmod 600 /opt/snsn/.env
 ```
 
-`cp -n` 在 `.env` 已存在时不会覆盖。编辑 `/opt/snsn/backend/.env`，至少填这些项：
+`cp -n` 在 `.env` 已存在时不会覆盖。编辑 `/opt/snsn/.env`，至少填这些项：
 
 ```bash
 SNSN_HOST=127.0.0.1
 SNSN_PORT=8000
-SNSN_TMP_DIR=/opt/snsn/backend/data/tmp
+SNSN_WORKERS=1
+SNSN_TMP_DIR=/opt/snsn/data/tmp
 SNSN_MAX_UPLOAD_MB=200
 SNSN_API_TOKEN=换成一长串随机口令
 
@@ -108,73 +127,57 @@ SNSN_ENABLE_TRANSLATE=true
 OSS Bucket 建在华北2（北京），和百炼 Paraformer 同区。轻量机不在北京时，继续用公网地址 `oss-cn-beijing.aliyuncs.com`。机器也在北京时，把 `SNSN_OSS_ENDPOINT` 改成 `https://oss-cn-beijing-internal.aliyuncs.com`。给 `tmp/snsn/` 加一条生命周期规则，例如 1 天后删除。
 
 ```bash
-sudo chown -R snsn:snsn /opt/snsn
-sudo chmod 600 /opt/snsn/backend/.env
-```
-
-新建 `/etc/systemd/system/snsn-api.service`：
-
-```ini
-[Unit]
-Description=SnSn API
-After=network.target
-
-[Service]
-User=snsn
-Group=snsn
-WorkingDirectory=/opt/snsn/backend
-EnvironmentFile=/opt/snsn/backend/.env
-ExecStart=/opt/snsn/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
-Restart=on-failure
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
-
-工作目录必须是 `backend`，进程才会读到同目录的 `.env`。任务状态在内存里，重启服务会丢掉进行中的转写。
-
-```bash
+sudo chmod 600 /opt/snsn/.env
+sudo cp /opt/snsn/releases/0.1.0/snsn-api.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now snsn-api
 sudo systemctl status snsn-api
 curl -s http://127.0.0.1:8000/api/health
 ```
 
+工作目录是 `/opt/snsn`（读同目录 `.env`）。代码在 venv 的 site-packages 里，不靠服务器上的源码树。任务状态在内存里，重启服务会丢掉进行中的转写。
+
 `ffmpeg`、`oss_configured`、`asr_configured` 都应为 `true`。
 
 ## 3. 前端
 
-在自己的电脑上构建，不要在 2G 服务器上跑 `npm run build`。
+在自己的电脑上构建并打成 tar.gz，不要在 2G 服务器上跑 `npm run build`。
 
 PowerShell：
 
 ```powershell
 cd frontend
-npm install
-$env:VITE_SNSN_API_TOKEN="和服务器 SNSN_API_TOKEN 相同"
-npm run build
+# 确认 .env 里已有 VITE_SNSN_API_TOKEN（与服务器 SNSN_API_TOKEN 一致）
+.\release.ps1
 ```
+
+产物：`frontend/release/snsn-www-YYYYMMDD-HHMM.tar.gz`。
 
 后端没设 `SNSN_API_TOKEN` 时，不要设置 `VITE_SNSN_API_TOKEN`。这个值会写进静态文件，口令改了就要重新构建并上传。
 
-把 `frontend/dist` 里的全部内容上传到服务器的 `/var/www/snsn/`：
+上传到服务器后解压到 `/opt/snsn/www/`：
 
 ```powershell
-scp -r dist/* root@服务器IP:/var/www/snsn/
+scp .\release\snsn-www-*.tar.gz root@服务器IP:/tmp/
 ```
 
-服务器上：
-
 ```bash
-sudo chown -R nginx:nginx /var/www/snsn
-sudo find /var/www/snsn -type d -exec chmod 755 {} \;
-sudo find /var/www/snsn -type f -exec chmod 644 {} \;
+sudo mkdir -p /opt/snsn/www
+sudo tar -xzf /tmp/snsn-www-YYYYMMDD-HHMM.tar.gz -C /opt/snsn/www
+sudo chown -R nginx:nginx /opt/snsn/www
+sudo find /opt/snsn/www -type d -exec chmod 755 {} \;
+sudo find /opt/snsn/www -type f -exec chmod 644 {} \;
 ```
 
 ## 4. Nginx
 
-这台系统没有 `sites-available`。配置写到 `/etc/nginx/conf.d/snsn.conf`，把 `server_name` 换成域名或公网 IP：
+### 4.1 写配置
+
+```bash
+sudo vi /etc/nginx/conf.d/snsn.conf
+```
+
+按 `i` 进入编辑，粘贴下面内容（`server_name` 改成你的域名或公网 IP），然后 `Esc`，输入 `:wq` 回车保存退出：
 
 ```nginx
 server {
@@ -182,7 +185,7 @@ server {
     server_name 你的域名或IP;
 
     client_max_body_size 220m;
-    root /var/www/snsn;
+    root /opt/snsn/www;
     index index.html;
 
     location /api/ {
@@ -202,7 +205,9 @@ server {
 }
 ```
 
-`client_max_body_size` 要大于后端的 200MB 上传上限，否则大文件会在 Nginx 被拒绝。
+（更习惯图形化编辑可用 `sudo nano /etc/nginx/conf.d/snsn.conf`，`Ctrl+O` 保存，`Ctrl+X` 退出。）
+
+### 4.2 生效
 
 ```bash
 sudo rm -f /etc/nginx/conf.d/default.conf
@@ -211,27 +216,32 @@ sudo systemctl enable --now nginx
 sudo systemctl reload nginx
 ```
 
-SELinux 若是 Enforcing，允许 Nginx 反代本机接口，并让它能读静态目录：
+### 4.3 验收
 
 ```bash
-getenforce
-sudo setsebool -P httpd_can_network_connect 1
-sudo dnf install -y policycoreutils-python-utils
-sudo semanage fcontext -a -t httpd_sys_content_t "/var/www/snsn(/.*)?"
-sudo restorecon -Rv /var/www/snsn
+curl -s http://127.0.0.1/api/health
 ```
 
-`getenforce` 输出 `Disabled` 或 `Permissive` 时，上面这组可以跳过。
+浏览器打开 `http://服务器IP`，能进首页；`/api/health` 应返回 JSON。
 
-本机若装了 firewalld，再放行网页端口。命令不存在就说明没装，只靠轻量控制台防火墙：
+### 4.4 可选（多数情况可跳过）
+
+SELinux 是 Enforcing 时：
+
+```bash
+sudo setsebool -P httpd_can_network_connect 1
+sudo dnf install -y policycoreutils-python-utils
+sudo semanage fcontext -a -t httpd_sys_content_t "/opt/snsn/www(/.*)?"
+sudo restorecon -Rv /opt/snsn/www
+```
+
+装了 firewalld 时：
 
 ```bash
 sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 ```
-
-浏览器打开 `http://服务器IP/api/health`，应返回和本机 `curl` 一样的 JSON。再打开首页，导入一段短音频，确认能排队、转写、出字幕。
 
 ## 5. HTTPS
 
@@ -246,16 +256,20 @@ sudo certbot --nginx -d 你的域名
 
 ## 6. 更新
 
-后端：上传新的源码（或在服务器上 `git pull`），然后：
+后端：本机改版本号（`pyproject.toml` 的 `version`）后重新 `.\release.ps1`，上传新的 `snsn-api-<ver>-release.tar.gz`，然后：
 
 ```bash
-cd /opt/snsn/backend
-sudo .venv/bin/pip install -r requirements.txt
-sudo chown -R snsn:snsn /opt/snsn
+# 例：升级到 0.1.1
+sudo mkdir -p /opt/snsn/releases/0.1.1
+sudo tar -xzf /tmp/snsn-api-0.1.1-release.tar.gz \
+  -C /opt/snsn/releases/0.1.1 --strip-components=1
+cd /opt/snsn
+sudo .venv/bin/pip install --upgrade /opt/snsn/releases/0.1.1/snsn_api-*-py3-none-any.whl
 sudo systemctl restart snsn-api
+curl -s http://127.0.0.1:8000/api/health
 ```
 
-前端：本机重新 `npm run build`，把 `dist` 覆盖到 `/var/www/snsn/`。静态文件不用重启 Nginx。
+前端：本机重新 `.\release.ps1`，上传 `snsn-www-*.tar.gz`，解压覆盖 `/opt/snsn/www/`。静态文件不用重启 Nginx。
 
 日志：
 
@@ -263,4 +277,4 @@ sudo systemctl restart snsn-api
 sudo journalctl -u snsn-api -f
 ```
 
-确认没有正在跑的任务后，可以清理 `/opt/snsn/backend/data/tmp` 里的残留文件。
+确认没有正在跑的任务后，可以清理 `/opt/snsn/data/tmp` 里的残留文件。
