@@ -226,7 +226,7 @@
     <div class="card">
       <h2>备份与迁移</h2>
       <p class="muted tip">
-        当前导出为课单与字幕。原片离线缓存接入后，可再支持「含原片」大包导出。
+        导出为 ZIP：课单、字幕，以及本机已缓存的原片。导入 ZIP 后可直接播放；仍支持旧版 JSON（仅课单字幕）。
       </p>
       <div class="actions">
         <button class="action primary" type="button" disabled={busy} onclick={onExport}>导出备份</button>
@@ -247,7 +247,7 @@
         class="sr-only"
         bind:this={fileInput}
         type="file"
-        accept="application/json,.json"
+        accept="application/zip,.zip,application/json,.json"
         onchange={onFileChange}
       />
     </div>

@@ -118,9 +118,20 @@ export async function clearMediaCache(lessonId: string): Promise<void> {
   await db.delete('media', lessonId)
 }
 
-export async function listMediaCacheSizes(): Promise<Record<string, number>> {
+export async function listMediaCaches(): Promise<MediaCacheRecord[]> {
   const db = await getDb()
-  const all = await db.getAll('media')
+  return db.getAll('media')
+}
+
+export async function clearAllMediaCaches(): Promise<void> {
+  const db = await getDb()
+  const tx = db.transaction('media', 'readwrite')
+  await tx.store.clear()
+  await tx.done
+}
+
+export async function listMediaCacheSizes(): Promise<Record<string, number>> {
+  const all = await listMediaCaches()
   const map: Record<string, number> = {}
   for (const item of all) {
     map[item.lessonId] = item.size

@@ -5,12 +5,14 @@ import {
   type ShadowStep,
   type SubtitleMode,
 } from './demo'
-import { buildBackup, downloadBackup, readBackupFile } from './backup'
+import { buildBackupZip, downloadBlob, readBackupFile } from './backup'
 import {
+  clearAllMediaCaches,
   clearMediaCache,
   deleteLesson,
   getSettings,
   listLessons,
+  listMediaCaches,
   listMediaCacheSizes,
   putMediaCache,
   saveLessons,
@@ -68,16 +70,28 @@ export async function addImportedLesson(lesson: Lesson, file: File) {
 }
 
 export async function exportBackup() {
-  const backup = buildBackup(get(lessons), get(subtitleMode))
-  downloadBackup(backup)
-  backupMessage.set(`已导出 ${backup.lessons.length} 课（不含原片）`)
+  const allLessons = get(lessons)
+  const media = await listMediaCaches()
+  const { blob, backup, mediaCount } = await buildBackupZip(
+    allLessons,
+    get(subtitleMode),
+    media,
+  )
+  const stamp = backup.exportedAt.slice(0, 10)
+  downloadBlob(blob, `snsn-backup-${stamp}.zip`)
+  const missing = allLessons.length - mediaCount
+  const extra =
+    missing > 0 ? `，另有 ${missing} 课无原片缓存未打包` : ''
+  backupMessage.set(`已导出 ${backup.lessons.length} 课（含 ${mediaCount} 课原片）${extra}`)
 }
 
 export async function importBackup(file: File, mode: 'merge' | 'replace' = 'merge') {
-  const backup = await readBackupFile(file)
+  const { backup, mediaByLessonId } = await readBackupFile(file)
   const incoming = backup.lessons
+
   if (mode === 'replace') {
     await persistLessons(incoming)
+    await clearAllMediaCaches()
   } else {
     const map = new Map(get(lessons).map((l) => [l.id, l]))
     for (const lesson of incoming) {
@@ -85,11 +99,27 @@ export async function importBackup(file: File, mode: 'merge' | 'replace' = 'merg
     }
     await persistLessons([...map.values()])
   }
+
+  let restored = 0
+  for (const lesson of incoming) {
+    const media = mediaByLessonId.get(lesson.id)
+    if (!media) continue
+    await putMediaCache(lesson.id, media.blob, { name: media.name, mime: media.mime })
+    restored += 1
+  }
+
   if (backup.settings?.subtitleMode) {
     subtitleMode.set(backup.settings.subtitleMode)
     await saveSettings({ subtitleMode: backup.settings.subtitleMode })
   }
-  backupMessage.set(`已导入 ${incoming.length} 课，请重新选择本地音视频`)
+
+  const mediaNote =
+    restored > 0
+      ? `，已恢复 ${restored} 课原片`
+      : mediaByLessonId.size === 0
+        ? '（旧版 JSON 或不含原片，请自行选素材）'
+        : ''
+  backupMessage.set(`已导入 ${incoming.length} 课${mediaNote}`)
 }
 
 export async function removeLesson(lessonId: string) {
