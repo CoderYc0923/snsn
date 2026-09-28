@@ -66,7 +66,7 @@
     <input
       class="sr-only"
       type="file"
-      accept="audio/*,.mp3,.m4a,.wav,.aac,.flac,.ogg,.opus"
+      accept="video/*,audio/*,.mp4,.webm,.mov,.mkv,.mp3,.m4a,.wav,.aac,.flac,.ogg,.opus"
       bind:this={fileInput}
       onchange={onFileChange}
     />
@@ -105,7 +105,7 @@
     {#if empty}
       <section class="empty">
         <p class="empty-title">还没有课程</p>
-        <p class="muted">点右上角 +，上传日语音频或粘贴 B 站链接。</p>
+        <p class="muted">点右上角 +，上传日语音视频或粘贴 B 站分享链接。</p>
         <button class="empty-cta" type="button" disabled={importing} onclick={openChooser}
           >导入材料</button
         >
@@ -133,21 +133,21 @@
         <div class="chooser-handle" aria-hidden="true"></div>
         {#if !linkMode}
           <h2>导入材料</h2>
-          <p class="chooser-tip muted">当前仅支持音频；视频入口已关闭。</p>
-          <button class="chooser-act primary" type="button" onclick={pickFile}>上传音频</button>
+          <p class="chooser-tip muted">可上传本地音视频，或粘贴 B 站 App「分享」全文 / 链接。</p>
+          <button class="chooser-act primary" type="button" onclick={pickFile}>上传音视频</button>
           <button class="chooser-act" type="button" onclick={showLinkForm}>B 站链接</button>
           <button class="chooser-cancel" type="button" onclick={closeChooser}>取消</button>
         {:else}
           <h2>B 站链接</h2>
-          <p class="chooser-tip muted">粘贴 bilibili.com 或 b23.tv 链接，将下载音频并转写。</p>
-          <input
+          <p class="chooser-tip muted">
+            支持 bilibili.com、b23.tv，也可直接粘贴 App 分享出来的整段文字；将下载视频并转写。
+          </p>
+          <textarea
             class="url-input"
-            type="url"
-            inputmode="url"
-            placeholder="https://www.bilibili.com/video/..."
+            rows="3"
+            placeholder="粘贴分享内容或 https://b23.tv/… / BV 号"
             bind:value={biliUrl}
-            onkeydown={(e) => e.key === 'Enter' && submitLink()}
-          />
+          ></textarea>
           <button class="chooser-act primary" type="button" disabled={!biliUrl.trim()} onclick={submitLink}
             >开始导入</button
           >
@@ -350,14 +350,16 @@
 
   .url-input {
     width: 100%;
-    min-height: 48px;
+    min-height: 88px;
     margin-bottom: 12px;
-    padding: 0 14px;
+    padding: 12px 14px;
     border-radius: 14px;
     border: 1.5px solid rgba(45, 62, 47, 0.12);
     background: var(--bg-sage);
     font-size: 0.92rem;
     font-weight: 600;
+    line-height: 1.45;
+    resize: vertical;
   }
 
   @keyframes brand-rise {

@@ -16,11 +16,17 @@ from app.schemas import (
     JobInfo,
 )
 from app.services.ffmpeg_svc import ffmpeg_available
-from app.services.ytdlp_svc import is_bilibili_url, ytdlp_available
+from app.services.ytdlp_svc import extract_bilibili_url, is_bilibili_url, ytdlp_available
 
 router = APIRouter()
 
 _AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"}
+_VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
+_MEDIA_SUFFIXES = _AUDIO_SUFFIXES | _VIDEO_SUFFIXES
+
+
+def _media_kind_for_suffix(suffix: str) -> str:
+    return "video" if suffix in _VIDEO_SUFFIXES else "audio"
 
 
 def require_token(
@@ -76,8 +82,11 @@ async def create_job(
         raise HTTPException(status_code=400, detail="缺少文件名")
 
     suffix = Path(file.filename).suffix.lower() or ".bin"
-    if suffix not in _AUDIO_SUFFIXES:
-        raise HTTPException(status_code=400, detail="当前仅支持音频文件（mp3 / m4a / wav 等）")
+    if suffix not in _MEDIA_SUFFIXES:
+        raise HTTPException(
+            status_code=400,
+            detail="不支持的格式，请上传音频（mp3/m4a/wav…）或视频（mp4/webm/mov…）",
+        )
 
     settings.tmp_dir.mkdir(parents=True, exist_ok=True)
     staging = settings.tmp_dir / f"upload-{uuid.uuid4().hex}{suffix}"
@@ -103,7 +112,7 @@ async def create_job(
         await file.close()
 
     title = Path(file.filename).stem.strip() or None
-    return manager.create(staging, title=title)
+    return manager.create(staging, title=title, media_kind=_media_kind_for_suffix(suffix))
 
 
 @router.post("/jobs/url", response_model=JobInfo, dependencies=[Depends(require_token)])
@@ -113,10 +122,14 @@ def create_job_from_url(
 ) -> JobInfo:
     if not ytdlp_available():
         raise HTTPException(status_code=503, detail="服务器未安装 yt-dlp，无法解析 B 站链接")
-    if not is_bilibili_url(body.url):
+    try:
+        url = extract_bilibili_url(body.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not is_bilibili_url(url):
         raise HTTPException(status_code=400, detail="仅支持 B 站链接（bilibili.com / b23.tv）")
     try:
-        return manager.create_from_url(body.url)
+        return manager.create_from_url(url)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -147,8 +160,13 @@ def get_job_media(job_id: str, manager: JobManager = Depends(get_job_manager)):
         ".ogg": "audio/ogg",
         ".opus": "audio/opus",
         ".flac": "audio/flac",
+        ".mp4": "video/mp4",
+        ".m4v": "video/mp4",
+        ".webm": "video/webm",
+        ".mkv": "video/x-matroska",
+        ".mov": "video/quicktime",
     }.get(path.suffix.lower(), "application/octet-stream")
-    filename = f"{(job.title or 'snsn-audio').strip()}{path.suffix}"
+    filename = f"{(job.title or 'snsn-media').strip()}{path.suffix}"
     return FileResponse(
         path,
         media_type=media_type,

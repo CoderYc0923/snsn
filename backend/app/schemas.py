@@ -50,10 +50,11 @@ class JobInfo(BaseModel):
     result: JobResult | None = None
     source: str = "upload"  # upload | bilibili
     title: str | None = None
+    media_kind: str = "audio"  # audio | video
 
 
 class CreateUrlJobRequest(BaseModel):
-    url: str = Field(min_length=8, max_length=2048)
+    url: str = Field(min_length=4, max_length=4096)
 
 
 class AuthVerifyRequest(BaseModel):

@@ -57,31 +57,31 @@
   })
 </script>
 
-<section class="player" aria-label="播放器">
-  <div class="frame">
-    {#if src && kind === 'video'}
-      <video
-        class="media"
-        bind:this={mediaEl}
-        playsinline
-        preload="metadata"
-        src={src}
-      >
-        <track kind="captions" />
-      </video>
-    {:else if src}
-      <div class="audio-shell">
-        <p class="sub top">{overlayText || posterLabel}</p>
-        <audio class="hidden-audio" bind:this={mediaEl} preload="metadata" src={src}></audio>
-      </div>
-    {:else}
-      <div class="poster">
-        <p class="sub top">{overlayText || posterLabel}</p>
-        <p class="hint">{missing ? '未缓存原片，请重新导入本地文件' : '加载媒体…'}</p>
-      </div>
-    {/if}
-  </div>
-</section>
+{#if kind === 'video'}
+  <section class="player" aria-label="播放器">
+    <div class="frame">
+      {#if src}
+        <div class="video-box">
+          <video class="media" bind:this={mediaEl} playsinline preload="metadata" src={src}>
+            <track kind="captions" />
+          </video>
+          {#if overlayText}
+            <p class="caption">{overlayText}</p>
+          {/if}
+        </div>
+      {:else}
+        <div class="poster">
+          <p class="sub top">{overlayText || posterLabel}</p>
+          <p class="hint">{missing ? '未缓存原片，请重新导入本地文件' : '加载媒体…'}</p>
+        </div>
+      {/if}
+    </div>
+  </section>
+{:else if src}
+  <audio class="sr-only-media" bind:this={mediaEl} preload="metadata" src={src}></audio>
+{:else if missing}
+  <p class="audio-missing muted">未缓存原片，请重新导入本地文件</p>
+{/if}
 
 <style>
   .player {
@@ -95,6 +95,10 @@
     box-shadow: var(--shadow-card);
   }
 
+  .video-box {
+    position: relative;
+  }
+
   .media {
     display: block;
     width: 100%;
@@ -102,15 +106,37 @@
     background: #000;
   }
 
-  .hidden-audio {
+  .caption {
     position: absolute;
-    width: 0;
-    height: 0;
-    opacity: 0;
+    left: 10px;
+    right: 10px;
+    bottom: 12px;
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-family: var(--font-jp);
+    font-size: 0.92rem;
+    font-weight: 700;
+    line-height: 1.45;
+    text-align: center;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
     pointer-events: none;
   }
 
-  .audio-shell,
+  .sr-only-media {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   .poster {
     aspect-ratio: 16 / 10;
     background:
@@ -143,5 +169,11 @@
     color: rgba(255, 255, 255, 0.78);
     font-size: 0.82rem;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+
+  .audio-missing {
+    margin: 8px 18px 0;
+    font-size: 0.85rem;
+    font-weight: 650;
   }
 </style>

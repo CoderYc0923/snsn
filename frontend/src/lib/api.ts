@@ -39,6 +39,7 @@ export type JobInfo = {
   result: JobResult | null
   source?: 'upload' | 'bilibili' | string
   title?: string | null
+  media_kind?: 'audio' | 'video' | string
 }
 
 export type HealthResponse = {
@@ -226,7 +227,7 @@ export function stageToImportIndex(stage: string, source: 'upload' | 'bilibili' 
 export function mapJobToLesson(
   job: JobInfo,
   file: File,
-  opts?: { title?: string },
+  opts?: { title?: string; kind?: 'audio' | 'video' },
 ): Lesson {
   const result = job.result
   if (!result) throw new Error('任务无转写结果')
@@ -235,12 +236,19 @@ export function mapJobToLesson(
     job.title?.trim() ||
     result.title?.trim() ||
     titleFromFilename(file.name)
+  const kind: Lesson['kind'] =
+    opts?.kind ||
+    (job.media_kind === 'video' || job.media_kind === 'audio'
+      ? job.media_kind
+      : file.type.startsWith('video/')
+        ? 'video'
+        : 'audio')
   return {
     id: job.id,
     title,
     date: new Date().toISOString().slice(0, 10),
     durationMs: result.duration_ms || 0,
-    kind: 'audio',
+    kind,
     sourceLang: 'ja',
     targetLang: 'zh-CN',
     posterLabel: posterFromTitle(title),

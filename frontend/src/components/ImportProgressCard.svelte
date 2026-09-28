@@ -12,7 +12,9 @@
 
 <article class="card" class:failed={task.status === 'failed'} aria-live="polite">
   <div class="top">
-    <div class="badge">{task.source === 'bilibili' ? 'B站' : '音频'}</div>
+    <div class="badge">
+      {task.source === 'bilibili' ? 'B站' : task.kind === 'video' ? '视频' : '音频'}
+    </div>
     <button
       class="x"
       type="button"

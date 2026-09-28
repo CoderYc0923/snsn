@@ -6,7 +6,7 @@ from pathlib import Path
 from app.config import Settings, get_settings
 from app.schemas import JobInfo, JobStatus
 from app.services.pipeline import TranscribePipeline, new_job_id
-from app.services.ytdlp_svc import download_bilibili_audio, is_bilibili_url, normalize_url
+from app.services.ytdlp_svc import download_bilibili_video, extract_bilibili_url, is_bilibili_url
 
 
 class JobManager:
@@ -36,7 +36,7 @@ class JobManager:
             job = self._jobs.get(job_id)
             return job.model_copy(deep=True) if job else None
 
-    def create(self, upload_path: Path, *, title: str | None = None) -> JobInfo:
+    def create(self, upload_path: Path, *, title: str | None = None, media_kind: str = "audio") -> JobInfo:
         job_id = new_job_id()
         job = JobInfo(
             id=job_id,
@@ -45,6 +45,7 @@ class JobManager:
             progress=0.0,
             source="upload",
             title=title,
+            media_kind=media_kind,
         )
         with self._cv:
             self._jobs[job_id] = job
@@ -54,7 +55,7 @@ class JobManager:
         return job.model_copy(deep=True)
 
     def create_from_url(self, url: str) -> JobInfo:
-        url = normalize_url(url)
+        url = extract_bilibili_url(url)
         if not is_bilibili_url(url):
             raise ValueError("仅支持 B 站链接（bilibili.com / b23.tv）")
         job_id = new_job_id()
@@ -65,6 +66,7 @@ class JobManager:
             progress=0.0,
             source="bilibili",
             title=None,
+            media_kind="video",
         )
         with self._cv:
             self._jobs[job_id] = job
@@ -135,7 +137,7 @@ class JobManager:
                     on_progress(0.02, "download")
                     dl_dir = self.settings.tmp_dir / f"dl-{job_id}"
                     dl_dir.mkdir(parents=True, exist_ok=True)
-                    upload, title = download_bilibili_audio(url, dl_dir, on_progress=on_progress)
+                    upload, title = download_bilibili_video(url, dl_dir, on_progress=on_progress)
                     with self._lock:
                         current = self._jobs.get(job_id)
                         if current:
@@ -143,7 +145,7 @@ class JobManager:
                         self._uploads[job_id] = upload
 
                 if upload is None or not upload.exists():
-                    raise FileNotFoundError("音频文件已丢失")
+                    raise FileNotFoundError("媒体文件已丢失")
 
                 result, media_path = pipeline.run(
                     job, upload, on_progress, title=title or job.title

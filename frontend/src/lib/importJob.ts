@@ -25,7 +25,7 @@ export type ImportTask = {
   localId: string
   jobId: string | null
   title: string
-  kind: 'audio'
+  kind: 'audio' | 'video'
   source: ImportSource
   stageIndex: number
   progress: number
@@ -92,17 +92,14 @@ export async function startImport(file: File) {
     showToast('已有导入任务进行中，请稍后再试')
     return
   }
-  if (file.type.startsWith('video/')) {
-    showToast('当前仅支持音频，请上传 mp3 / m4a / wav 等')
-    return
-  }
 
   const localId = crypto.randomUUID()
+  const kind: ImportTask['kind'] = file.type.startsWith('video/') ? 'video' : 'audio'
   const task: ImportTask = {
     localId,
     jobId: null,
     title: titleFromFilename(file.name),
-    kind: 'audio',
+    kind,
     source: 'upload',
     stageIndex: 0,
     progress: 0,
@@ -145,9 +142,9 @@ export async function startImport(file: File) {
       throw new Error(done.error || '转写失败')
     }
 
-    const lesson = mapJobToLesson(done, file)
+    const lesson = mapJobToLesson(done, file, { kind })
     if (!lesson.cues.length) {
-      throw new Error('未识别到字幕，请换一段更清晰的日语音频')
+      throw new Error('未识别到字幕，请换一段更清晰的日语材料')
     }
 
     await addImportedLesson(lesson, file)
@@ -178,7 +175,7 @@ export async function startImportFromUrl(url: string) {
   }
   const trimmed = url.trim()
   if (!trimmed) {
-    showToast('请粘贴 B 站链接')
+    showToast('请粘贴 B 站分享内容或链接')
     return
   }
 
@@ -186,8 +183,8 @@ export async function startImportFromUrl(url: string) {
   const task: ImportTask = {
     localId,
     jobId: null,
-    title: 'B站音频',
-    kind: 'audio',
+    title: 'B站视频',
+    kind: 'video',
     source: 'bilibili',
     stageIndex: 0,
     progress: 0,
@@ -219,7 +216,10 @@ export async function startImportFromUrl(url: string) {
         patchTask(localId, {
           stageIndex: stageToImportIndex(job.stage, 'bilibili'),
           progress: job.progress,
-          title: job.title?.trim() || get(importTasks).find((t) => t.localId === localId)?.title || task.title,
+          title:
+            job.title?.trim() ||
+            get(importTasks).find((t) => t.localId === localId)?.title ||
+            task.title,
         })
       },
     })
@@ -232,9 +232,12 @@ export async function startImportFromUrl(url: string) {
     }
 
     const media = await fetchJobMedia(done.id, abort.signal)
-    const lesson = mapJobToLesson(done, media, { title: done.title || undefined })
+    const lesson = mapJobToLesson(done, media, {
+      title: done.title || undefined,
+      kind: 'video',
+    })
     if (!lesson.cues.length) {
-      throw new Error('未识别到字幕，请换一段更清晰的日语音频')
+      throw new Error('未识别到字幕，请换一段更清晰的日语材料')
     }
 
     await addImportedLesson(lesson, media)
