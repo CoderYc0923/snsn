@@ -29,6 +29,9 @@
 
   {#if task.status === 'failed'}
     <p class="err">{task.error || '导入失败'}</p>
+    {#if task.source === 'bilibili' && /登录|大会员|Cookie/i.test(task.error || '')}
+      <p class="tip">排查：确认该稿在未登录浏览器能直接播放；大会员/付费稿需在后端配置 Cookie。</p>
+    {/if}
     <div class="actions">
       <button type="button" onclick={() => retryImport(task.localId)}>重试</button>
       <button class="ghost" type="button" onclick={() => dismissImportTask(task.localId)}>关闭</button>
@@ -112,6 +115,14 @@
     font-size: 0.85rem;
     font-weight: 650;
     color: #b42318;
+  }
+
+  .tip {
+    margin: -4px 0 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.45;
+    color: var(--ink-soft);
   }
 
   .bar {

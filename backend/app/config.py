@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     translate_batch_chars: int = 500
     translate_concurrency: int = 4
     translate_timeout_sec: int = 90
+    # Optional Netscape cookies.txt (with SESSDATA) to bypass Bilibili 412 / login walls.
+    bilibili_cookie_file: str = ""
 
     @computed_field  # type: ignore[prop-decorator]
     @property

@@ -45,6 +45,24 @@ export function stagesForTask(task: ImportTask): readonly string[] {
   return task.source === 'bilibili' ? IMPORT_STAGES_BILI : IMPORT_STAGES_UPLOAD
 }
 
+/** Normalize Bilibili download failures into a clear login/VIP tip. */
+export function formatImportError(err: unknown, source: ImportSource = 'upload'): string {
+  const raw = err instanceof Error ? err.message : String(err || '导入失败')
+  if (source !== 'bilibili') return raw || '导入失败'
+
+  if (
+    /该链接需要登录|需要登录|大会员|SNSN_BILIBILI_COOKIE|SESSDATA|付费|专享|权限不足|HTTP 412|Precondition|cookie/i.test(
+      raw,
+    )
+  ) {
+    return (
+      '该链接需要登录或大会员才能下载。' +
+      '请换公开可播的稿件，或在服务器配置 B 站 Cookie（SNSN_BILIBILI_COOKIE_FILE，含 SESSDATA）后重试。'
+    )
+  }
+  return raw || '导入失败'
+}
+
 export function showToast(message: string, ms = 4200) {
   toastMessage.set(message)
   if (toastTimer) clearTimeout(toastTimer)
@@ -256,7 +274,7 @@ export async function startImportFromUrl(url: string) {
     controllers.delete(localId)
     patchTask(localId, {
       status: 'failed',
-      error: err instanceof Error ? err.message : '导入失败',
+      error: formatImportError(err, 'bilibili'),
     })
   }
 }
