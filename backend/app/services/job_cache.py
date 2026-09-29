@@ -14,7 +14,7 @@ from app.schemas import JobInfo, JobResult, JobStatus
 logger = logging.getLogger(__name__)
 
 # Bump when split/translate behavior changes so content hits stay coherent.
-PIPELINE_CACHE_VERSION = "cue-sub-v1"
+PIPELINE_CACHE_VERSION = "cue-sub-funasr-v1"
 
 _DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 

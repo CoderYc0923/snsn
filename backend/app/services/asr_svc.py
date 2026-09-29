@@ -20,7 +20,8 @@ class AsrService:
         return bool(self.settings.dashscope_api_key)
 
     def transcribe_japanese(self, file_url: str) -> JobResult:
-        """Submit Paraformer file transcription and wait for result."""
+        """Submit file transcription (Fun-ASR / Paraformer) and wait for result."""
+        # Fun-ASR accepts only one language_hints entry; keep ja for this product.
         task = Transcription.async_call(
             model=self.settings.asr_model,
             file_urls=[file_url],

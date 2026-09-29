@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     oss_public_base_url: str = ""
 
     dashscope_api_key: str = ""
-    asr_model: str = "paraformer-v2"
+    asr_model: str = "fun-asr"
     # Flash: word-level JSON is output-heavy; plus/thinking modes are too slow.
     translate_model: str = "deepseek-v4-flash"
     enable_translate: bool = True

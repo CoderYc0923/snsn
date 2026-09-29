@@ -262,7 +262,7 @@
     <div class="card">
       <h2>关于</h2>
       <p class="muted">Sn Sn，让你的日语闪闪发光</p>
-      <p class="ver">前端版本 {APP_VERSION}</p>
+      <p class="ver">版本 {APP_VERSION}</p>
     </div>
   </section>
 
