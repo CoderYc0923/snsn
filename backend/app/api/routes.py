@@ -68,6 +68,7 @@ def health(
             "oss_endpoint": settings.oss_endpoint,
             "asr_model": settings.asr_model,
             "tmp_dir": str(settings.tmp_dir),
+            "cache_dir": str(settings.cache_dir),
         },
     )
 

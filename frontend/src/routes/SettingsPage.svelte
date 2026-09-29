@@ -17,6 +17,7 @@
     type StorageUsage,
   } from '../lib/storage'
   import BottomNav from '../components/BottomNav.svelte'
+  import { APP_VERSION } from '../lib/version'
 
   let fileInput: HTMLInputElement
   let busy = $state(false)
@@ -261,6 +262,7 @@
     <div class="card">
       <h2>关于</h2>
       <p class="muted">Sn Sn，让你的日语闪闪发光</p>
+      <p class="ver">前端版本 {APP_VERSION}</p>
     </div>
   </section>
 
@@ -309,6 +311,14 @@
 
   .card p {
     margin: 0;
+  }
+
+  .ver {
+    margin-top: 10px !important;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--ink-faint);
   }
 
   .linkish {

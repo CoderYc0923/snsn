@@ -155,6 +155,11 @@ def expand_bilibili_url(url: str) -> str:
         return url
 
 
+def parse_bvid_and_page(url: str) -> tuple[str, int]:
+    """Public wrapper: return (BVxxx|avN, page)."""
+    return _parse_bvid_and_page(url)
+
+
 def _parse_bvid_and_page(url: str) -> tuple[str, int]:
     url = expand_bilibili_url(url)
     parsed = urlparse(url)

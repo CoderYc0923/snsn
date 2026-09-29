@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { authUnlocked, initAuth } from './lib/auth'
   import { initStorage, route, storageReady } from './lib/nav'
-  import { clearToast, toastMessage } from './lib/importJob'
+  import { clearToast, resumePendingImports, toastMessage } from './lib/importJob'
   import AccessGate from './components/AccessGate.svelte'
   import HomePage from './routes/HomePage.svelte'
   import LessonPage from './routes/LessonPage.svelte'
@@ -12,6 +12,17 @@
   onMount(() => {
     initAuth()
     void initStorage()
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void resumePendingImports()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  })
+
+  $effect(() => {
+    if ($authUnlocked && $storageReady) {
+      void resumePendingImports()
+    }
   })
 </script>
 

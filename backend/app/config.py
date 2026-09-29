@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     port: int = 8000
     workers: int = 1
     tmp_dir: Path = Path(__file__).resolve().parents[1] / "data" / "tmp"
+    # Day-folder job/content cache (yesterday dirs purged on the new day).
+    cache_dir: Path = Path(__file__).resolve().parents[1] / "data" / "cache"
     max_upload_mb: int = 200
     max_duration_sec: int = 1800
     api_token: str = ""
@@ -34,10 +36,11 @@ class Settings(BaseSettings):
     # Flash: word-level JSON is output-heavy; plus/thinking modes are too slow.
     translate_model: str = "deepseek-v4-flash"
     enable_translate: bool = True
-    # Small batches finish sooner so progress moves; concurrency covers throughput.
-    translate_batch_items: int = 4
-    translate_batch_chars: int = 500
-    translate_concurrency: int = 4
+    # Contiguous mini-batches keep local context for natural CN;
+    # concurrency parallelizes across batches (not one isolated cue).
+    translate_batch_items: int = 6
+    translate_batch_chars: int = 420
+    translate_concurrency: int = 6
     translate_timeout_sec: int = 90
     # Optional Netscape cookies.txt (with SESSDATA) to bypass Bilibili 412 / login walls.
     bilibili_cookie_file: str = ""

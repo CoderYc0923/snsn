@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from app.schemas import Cue, CueWord
 
-# Prefer keeping a full sentence. Only mid-split when a sentence is too long.
-_SOFT_MAX_MS = 16_000
-_HARD_MAX_MS = 22_000
-_MIN_CUE_MS = 500
-_PAUSE_SPLIT_MS = 420
+# Subtitle-style targets (beginner-friendly), not long shadowing blocks.
+_SOFT_MAX_MS = 5_500
+_HARD_MAX_MS = 8_000
+_MIN_CUE_MS = 400
+# Video talk often has long gaps — treat these as hard boundaries.
+_PAUSE_STRONG_MS = 480
+# Softer breath / comma-like pause inside a sentence.
+_PAUSE_SOFT_MS = 280
 _SENTENCE_ENDS = set("。！？!?")
 _CLAUSE_BREAKS = set("、，,；;：:")
 _NO_CUT_AFTER = {
@@ -31,7 +34,11 @@ _NO_CUT_AFTER = {
 
 
 def split_cues_for_shadowing(cues: list[Cue]) -> list[Cue]:
-    """Semantic-first split: complete sentences, then mid-clause only if oversized."""
+    """Split ASR cues into subtitle-sized lines.
+
+    Priority: sentence end → long pause → soft length at clause/pause → hard cap.
+    Avoids half-sentence leftovers better than the old long-block logic.
+    """
     out: list[Cue] = []
     for cue in cues:
         out.extend(_split_one(cue) or [cue])
@@ -50,9 +57,13 @@ def _merge_tiny(cues: list[Cue]) -> list[Cue]:
         prev = merged[-1]
         dur = cue.end_ms - cue.start_ms
         chars = len((cue.text or "").strip())
-        # Only glue fragments; never glue two complete sentences if already readable.
+        gap = max(0, cue.start_ms - prev.end_ms)
         prev_ends = (prev.text or "").rstrip().endswith(tuple(_SENTENCE_ENDS))
-        if (dur < 500 or chars <= 3) and not prev_ends:
+        # Never glue across a real talk gap or a finished sentence.
+        if gap >= _PAUSE_STRONG_MS or prev_ends:
+            merged.append(cue)
+            continue
+        if (dur < _MIN_CUE_MS or chars <= 2) and not prev_ends:
             merged[-1] = Cue(
                 id=prev.id,
                 start_ms=prev.start_ms,
@@ -75,25 +86,33 @@ def _split_one(cue: Cue) -> list[Cue]:
     if len(words) < 2:
         return [cue]
 
-    # Pass 1: always cut on sentence terminators.
-    sentence_cuts = _cuts_on_sentence_ends(words)
-    sentences = _materialize_slices(cue, words, sentence_cuts)
+    # 1) Always cut on sentence terminators (never leave "一句半").
+    sentences = _materialize_slices(cue, words, _cuts_on_sentence_ends(words))
 
-    # Pass 2: only oversized sentences get mid-clause splits.
+    # 2) Inside each sentence: pause-first, then length caps.
     out: list[Cue] = []
     for sent in sentences:
-        dur = max(0, sent.end_ms - sent.start_ms)
-        if dur <= _SOFT_MAX_MS:
-            out.append(sent)
-            continue
         sw = [w for w in sent.words if (w.text or "").strip()]
-        if len(sw) < 4:
+        if len(sw) < 2:
             out.append(sent)
             continue
-        mid_cuts = _cuts_oversized(sw, sent.start_ms)
-        pieces = _materialize_slices(sent, sw, mid_cuts)
-        out.extend(pieces or [sent])
+        dur = max(0, sent.end_ms - sent.start_ms)
+        if dur <= _SOFT_MAX_MS and not _has_strong_pause(sw):
+            out.append(sent)
+            continue
+        cuts = _cuts_subtitle(sw, sent.start_ms)
+        out.extend(_materialize_slices(sent, sw, cuts) or [sent])
     return out
+
+
+def _has_strong_pause(words: list[CueWord]) -> bool:
+    for i in range(len(words) - 1):
+        w, nxt = words[i], words[i + 1]
+        if nxt.start_ms is None or w.end_ms is None:
+            continue
+        if nxt.start_ms - w.end_ms >= _PAUSE_STRONG_MS:
+            return True
+    return False
 
 
 def _cuts_on_sentence_ends(words: list[CueWord]) -> list[int]:
@@ -105,7 +124,8 @@ def _cuts_on_sentence_ends(words: list[CueWord]) -> list[int]:
     return cuts
 
 
-def _cuts_oversized(words: list[CueWord], cue_start: int) -> list[int]:
+def _cuts_subtitle(words: list[CueWord], cue_start: int) -> list[int]:
+    """Pause-first cuts; only force mid-cuts when a segment is still too long."""
     n = len(words)
     cuts: list[int] = []
     seg_start = 0
@@ -118,58 +138,66 @@ def _cuts_oversized(words: list[CueWord], cue_start: int) -> list[int]:
             words[i].start_ms or cue_start
         )
 
+    def pause_after(i: int) -> int:
+        w, nxt = words[i], words[i + 1]
+        if nxt.start_ms is None or w.end_ms is None:
+            return 0
+        return max(0, nxt.start_ms - w.end_ms)
+
     for i in range(n - 1):
         w = words[i]
-        nxt = words[i + 1]
         text = (w.text or "").strip()
         last_ch = text[-1] if text else ""
         bare = text.rstrip("。！？!?、，,；;：:")
-        pause = 0
-        if nxt.start_ms is not None and w.end_ms is not None:
-            pause = max(0, nxt.start_ms - w.end_ms)
+        pause = pause_after(i)
         dur = end_ms(i) - start_ms(seg_start)
-
-        if bare in _NO_CUT_AFTER and last_ch not in _SENTENCE_ENDS and dur < _HARD_MAX_MS:
-            continue
-
         clause = last_ch in _CLAUSE_BREAKS
-        pause_break = pause >= _PAUSE_SPLIT_MS
-        soft = dur >= _SOFT_MAX_MS
-        hard = dur >= _HARD_MAX_MS
+        particle = bare in _NO_CUT_AFTER and last_ch not in _SENTENCE_ENDS
 
         should = False
-        if hard and (clause or pause_break or bare not in _NO_CUT_AFTER):
+        # Strong silence between talk turns — always a subtitle boundary.
+        if pause >= _PAUSE_STRONG_MS and dur >= _MIN_CUE_MS:
             should = True
-        elif soft and clause and dur >= _MIN_CUE_MS:
-            should = True
-        elif soft and pause_break and dur >= _MIN_CUE_MS:
+        # Soft length: prefer clause marks or a softer pause; avoid cutting after は/が/を.
+        elif dur >= _SOFT_MAX_MS:
+            if clause:
+                should = True
+            elif pause >= _PAUSE_SOFT_MS and not particle:
+                should = True
+            elif not particle and dur >= _HARD_MAX_MS:
+                should = True
+        # Hard length: cut even mid-phrase if needed (still prefer non-particle).
+        elif dur >= _HARD_MAX_MS and not particle:
             should = True
 
         if should:
             cuts.append(i)
             seg_start = i + 1
 
-    if not cuts and n > 4:
-        # Last resort: midpoint near a clause/pause.
-        mid_t = (start_ms(0) + end_ms(n - 1)) / 2
+    # Last resort: still one oversized blob — split near midpoint at best pause/clause.
+    final_dur = end_ms(n - 1) - start_ms(seg_start)
+    if final_dur >= _HARD_MAX_MS and n - seg_start > 3:
+        mid_t = (start_ms(seg_start) + end_ms(n - 1)) / 2
         best_i = None
         best = -1.0
-        for i in range(1, n - 1):
+        for i in range(seg_start + 1, n - 1):
             w = words[i]
             text = (w.text or "").strip()
             last_ch = text[-1] if text else ""
+            bare = text.rstrip("。！？!?、，,；;：:")
+            if bare in _NO_CUT_AFTER and last_ch not in _SENTENCE_ENDS:
+                continue
             score = 0.0
             if last_ch in _CLAUSE_BREAKS:
-                score += 800
-            nxt = words[i + 1]
-            if nxt.start_ms is not None and w.end_ms is not None:
-                score += min(400, max(0, nxt.start_ms - w.end_ms))
-            score -= abs(end_ms(i) - mid_t) / 10
+                score += 900
+            score += min(500, pause_after(i))
+            score -= abs(end_ms(i) - mid_t) / 8
             if score > best:
                 best = score
                 best_i = i
-        if best_i is not None and best > 0:
-            cuts = [best_i]
+        if best_i is not None:
+            cuts.append(best_i)
+
     return cuts
 
 

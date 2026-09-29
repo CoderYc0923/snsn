@@ -100,7 +100,6 @@
         lessonId={$lesson.id}
         kind={$lesson.kind}
         posterLabel={$lesson.posterLabel}
-        overlayText={$cue.text}
         durationHintMs={$lesson.durationMs}
       />
     </div>

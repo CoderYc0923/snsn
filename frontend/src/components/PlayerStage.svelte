@@ -7,13 +7,11 @@
     lessonId,
     kind,
     posterLabel,
-    overlayText = '',
     durationHintMs = 0,
   }: {
     lessonId: string
     kind: 'video' | 'audio'
     posterLabel: string
-    overlayText?: string
     durationHintMs?: number
   } = $props()
 
@@ -65,13 +63,10 @@
           <video class="media" bind:this={mediaEl} playsinline preload="metadata" src={src}>
             <track kind="captions" />
           </video>
-          {#if overlayText}
-            <p class="caption">{overlayText}</p>
-          {/if}
         </div>
       {:else}
         <div class="poster">
-          <p class="sub top">{overlayText || posterLabel}</p>
+          <p class="sub top">{posterLabel}</p>
           <p class="hint">{missing ? '未缓存原片，请重新导入本地文件' : '加载媒体…'}</p>
         </div>
       {/if}
@@ -104,25 +99,6 @@
     width: 100%;
     max-height: 42vh;
     background: #000;
-  }
-
-  .caption {
-    position: absolute;
-    left: 10px;
-    right: 10px;
-    bottom: 12px;
-    margin: 0;
-    padding: 8px 10px;
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.55);
-    color: #fff;
-    font-family: var(--font-jp);
-    font-size: 0.92rem;
-    font-weight: 700;
-    line-height: 1.45;
-    text-align: center;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-    pointer-events: none;
   }
 
   .sr-only-media {

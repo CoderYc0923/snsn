@@ -16,17 +16,22 @@ from app.schemas import Cue, CueWord
 logger = logging.getLogger(__name__)
 
 _TONES = {"yellow", "blue", "pink", "orange", "mint", "none"}
-_SYSTEM_PROMPT = """你是日语新闻/播客字幕的校对、分词注音与翻译专家，目标水准不低于 JLPT N1。
-对输入的每一条字幕，必须同时完成以下三项，且不得遗漏：
+_SYSTEM_PROMPT = """你是日语学习向视频字幕的校对、分词注音与中译专家（目标不低于 JLPT N1）。
+输入是按时间顺序排列的连续字幕条；请利用前后条理解指代、话题与语气，但输出时仍逐条对应，禁止合并/拆分条目。
+
+对每一条必须完成以下三项：
 
 1. text（校对）
-   - 只修正明显听写错误（同音错字、漏字、多字、明显断句错误），保持口播原意与语气。
-   - 禁止扩写、摘要、润色成书面语、合并/拆分相邻字幕条。
-   - 若原文已正确，保持 text 与输入一致。
+   - 只修正明显听写错误（同音错字、漏字、多字、明显断句错误），保持口播原意、语气与口语感。
+   - 禁止扩写、摘要、改成书面腔；禁止合并/拆分相邻字幕条。
+   - 若原文已正确，text 与输入保持一致。
 
-2. translation（中译）
-   - 准确、自然的简体中文；忠实于校对后的 text，不添不减。
-   - 专有名词、数字、外来语按语境处理；勿漏译关键信息。
+2. translation（中译，优先级高）
+   - 译成听起来自然的简体中文口播/字幕，像配音或视频硬字幕，而不是逐词直译。
+   - 要「对味」：语气、情绪、省略与口语节奏贴近日语原句；该短则短，该有语气词就保留对应感觉。
+   - 避免翻译腔（如生硬的「正在…着」「关于…的事情」「进行…」堆砌）；专有名词、数字、片假名外来语按中文习惯处理。
+   - 语义必须忠实，不添戏、不漏关键信息；可用前后条消歧（如「それ/これ/彼」），但本条译文只表达本条内容。
+   - 一条日语对应一句通顺中文；不要为了字字对齐而牺牲中文可读性。
 
 3. words（语义分词 + 注音 + 罗马字 + 色块）
    - 按语义词/词组切开，不要一字一词；助词、助动词、接续可单独成项；标点可单独一项。
@@ -159,7 +164,11 @@ class TranslateService:
 
     def _polish_and_translate(self, lines: list[str]) -> list[dict[str, Any]]:
         payload = [{"id": i, "text": line} for i, line in enumerate(lines)]
-        user = "请处理下列字幕条目（JSON）。\n" + json.dumps(payload, ensure_ascii=False)
+        user = (
+            "以下为按时间顺序连续的日语字幕条（JSON）。"
+            "请结合上下文译得自然对味，但逐条输出、条数不变。\n"
+            + json.dumps(payload, ensure_ascii=False)
+        )
         content = self._call_model(user)
         rows = _parse_rows(content, expected=len(lines))
         if rows is not None:
@@ -184,8 +193,8 @@ class TranslateService:
                 {"role": "user", "content": user},
             ],
             result_format="message",
-            temperature=0.2,
-            top_p=0.8,
+            temperature=0.35,
+            top_p=0.85,
             enable_thinking=False,
             request_timeout=timeout,
         )
